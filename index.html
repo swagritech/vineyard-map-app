@@ -707,8 +707,17 @@
       else alert("No grid cells rendered (maybe all clipped).");
     }
   </script>
+  <script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/service-worker.js")
+        .catch(err => console.warn("SW registration failed:", err));
+    });
+  }
+</script>
 </body>
 </html>
+
 
 
 
