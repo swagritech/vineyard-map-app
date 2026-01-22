@@ -25,24 +25,20 @@
       border-radius: 10px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.25);
       z-index: 1;
-      min-width: 340px;
-      user-select: none;
+      min-width: 320px;
     }
+
     .row { margin-top: 8px; }
-    .btnRow { display: flex; gap: 6px; flex-wrap: wrap; }
-    button { flex: 1; padding: 7px 8px; cursor: pointer; }
-    .small { font-size: 12px; color: #555; line-height: 1.25; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
-    .pill {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #f2f2f2;
-      font-size: 12px;
-    }
+    .btnRow { display: flex; gap: 6px; }
+    button { flex: 1; padding: 7px; cursor: pointer; }
+    select { width: 100%; padding: 6px; }
+
+    .small { font-size: 12px; color: #555; }
+    .mono { font-family: ui-monospace, monospace; }
+    .pill { padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
+
     .checkRow { display:flex; gap:10px; flex-wrap:wrap; }
     .checkRow label { font-size: 12px; display:flex; align-items:center; gap:6px; }
-    select { width: 100%; padding: 6px; }
   </style>
 
   <script
@@ -56,27 +52,12 @@
 
     <div class="row small">
       Customer: <span id="customerLabel" class="mono">—</span><br>
-      Block: <span id="blockLabel" class="mono">—</span><br>
-      Data: <span id="pathLabel" class="mono">—</span>
+      Block: <span id="blockLabel" class="mono">—</span>
     </div>
 
     <div class="row">
       <label class="small"><strong>Select block</strong></label>
       <select id="blockSelect"></select>
-      <div class="btnRow row">
-        <button onclick="reloadSelectedBlock()">Load block</button>
-        <button onclick="copyBlockLink()">Copy link</button>
-      </div>
-      <div class="small">
-        Tip: you can deep-link blocks with <span class="mono">?block=Block4</span>
-      </div>
-    </div>
-
-    <div class="btnRow row">
-      <button onclick="toggleBoundary()">Boundary</button>
-      <button onclick="toggleZones()">Zones</button>
-      <button onclick="fitToBoundary()">Fit boundary</button>
-      <button onclick="fitToZones()">Fit zones</button>
     </div>
 
     <div class="row">
@@ -86,21 +67,19 @@
         <label><input type="checkbox" id="z2" checked> Zone 2</label>
         <label><input type="checkbox" id="z3" checked> Zone 3</label>
       </div>
-      <div class="small">Colours are controlled by zone number (1=red, 2=orange, 3=green).</div>
     </div>
 
-    <hr style="margin:10px 0; border:none; border-top:1px solid #eee;">
+    <hr>
 
     <strong>GPS Walking</strong>
     <div class="btnRow row">
-      <button onclick="startGPS()">Start GPS</button>
-      <button onclick="stopGPS()">Stop GPS</button>
-      <button onclick="toggleFollow()">Follow: <span id="followLabel" class="mono">ON</span></button>
+      <button onclick="startGPS()">Start</button>
+      <button onclick="stopGPS()">Stop</button>
     </div>
 
     <div class="row small">
       GPS: <span id="gpsLabel" class="mono">OFF</span>
-      &nbsp; Accuracy: <span id="accLabel" class="mono">—</span><br>
+      &nbsp; Acc: <span id="accLabel" class="mono">—</span><br>
       You are in: <span id="zoneLabel" class="pill">—</span>
     </div>
   </div>
@@ -108,557 +87,195 @@
   <div id="map"></div>
 
   <script>
-    // Optional SW (if you have one)
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/service-worker.js").catch(() => {});
-      });
-    }
-
-    // ---------------------------
-    // Routing + config
-    // ---------------------------
     const DEFAULT_CUSTOMER = "Menzies";
 
     function getCustomerIdFromPath() {
-      const raw = window.location.pathname || "/";
-      const trimmed = raw.replace(/^\/+|\/+$/g, "");
+      const trimmed = location.pathname.replace(/^\/+|\/+$/g, "");
       if (!trimmed) return DEFAULT_CUSTOMER;
-
       const first = decodeURIComponent(trimmed.split("/")[0]);
-      const reserved = ["customers", "icons", "favicon.ico", "manifest.webmanifest", "service-worker.js"];
-      if (reserved.includes(first.toLowerCase())) return DEFAULT_CUSTOMER;
+      if (["customers","icons"].includes(first.toLowerCase())) return DEFAULT_CUSTOMER;
       return first;
     }
 
-    function getQueryParam(name) {
-      const url = new URL(window.location.href);
-      return url.searchParams.get(name);
+    function getQueryBlock() {
+      return new URL(location.href).searchParams.get("block");
     }
 
-    function setQueryParam(name, value) {
-      const url = new URL(window.location.href);
-      if (value == null) url.searchParams.delete(name);
-      else url.searchParams.set(name, value);
-      // replaceState so it doesn't refresh the page
-      history.replaceState({}, "", url.toString());
+    function setQueryBlock(blockId) {
+      const u = new URL(location.href);
+      u.searchParams.set("block", blockId);
+      history.replaceState({}, "", u);
     }
 
-    function blocksIndexUrl(customerId) {
-      return `/customers/${encodeURIComponent(customerId)}/blocks.json`;
+    function blocksIndexUrl(customer) {
+      return `/customers/${customer}/blocks.json`;
     }
 
-    function blockDataPaths(customerId, blockId) {
-      const c = encodeURIComponent(customerId);
-      const b = encodeURIComponent(blockId);
+    function blockDataPaths(customer, blockId) {
       return {
-        boundaryUrl: `/customers/${c}/blocks/${b}/boundary.geojson`,
-        rxUrl:       `/customers/${c}/blocks/${b}/rx.geojson`
+        boundary: `/customers/${customer}/blocks/${blockId}/block${blockId}boundary.geojson`,
+        rx:       `/customers/${customer}/blocks/${blockId}/block${blockId}rx.geojson`
       };
     }
 
-    // ---------------------------
-    // Globals
-    // ---------------------------
-    let map;
-
-    let boundaryLayer;
-    let zonesLayer;
-
-    let boundaryVisible = true;
-    let zonesVisible = true;
-
-    let boundaryBounds = null;
-    let zonesBounds = null;
-
-    let followMode = true;
-    let gpsWatchId = null;
-    let gpsMarker = null;
-    let gpsAccuracyCircle = null;
-
-    // { feature, zone, rate, unit, geo }
+    let map, boundaryLayer, zonesLayer;
     let zoneGeoms = [];
-    let highlightedFeatureId = null;
+    let gpsWatch = null;
+    let gpsMarker = null;
+    let gpsCircle = null;
+    let currentBlock = null;
 
-    // Customer + blocks config
-    let customerId = null;
-    let blocksConfig = null;
-    let currentBlockId = null;
-
-    // ---------------------------
-    // Helpers
-    // ---------------------------
-    const setText = (id, t) => (document.getElementById(id).textContent = t);
-
-    function zoneToColor(zone) {
-      if (zone === 1) return "#FF0000";
-      if (zone === 2) return "#FFA500";
-      if (zone === 3) return "#00FF00";
-      return "#00BFFF";
-    }
-
-    function zoneEnabled(zone) {
-      if (zone === 1) return document.getElementById("z1").checked;
-      if (zone === 2) return document.getElementById("z2").checked;
-      if (zone === 3) return document.getElementById("z3").checked;
-      return true;
-    }
-
-    function computeBoundsForLayer(layer) {
-      const b = new google.maps.LatLngBounds();
-      let any = false;
-      layer.forEach(feature => {
-        const geom = feature.getGeometry();
-        if (!geom) return;
-        geom.forEachLatLng(ll => { b.extend(ll); any = true; });
-      });
-      return any ? b : null;
-    }
-
-    // GeoJSON coords [lng, lat]
-    function pointInRing(ptLng, ptLat, ring) {
-      let inside = false;
-      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        const xi = ring[i][0], yi = ring[i][1];
-        const xj = ring[j][0], yj = ring[j][1];
-        const intersect =
-          ((yi > ptLat) !== (yj > ptLat)) &&
-          (ptLng < (xj - xi) * (ptLat - yi) / ((yj - yi) || 1e-12) + xi);
-        if (intersect) inside = !inside;
-      }
-      return inside;
-    }
-
-    function pointInPolygonCoords(ptLng, ptLat, polyCoords) {
-      if (!polyCoords || polyCoords.length === 0) return false;
-      const outer = polyCoords[0];
-      if (!pointInRing(ptLng, ptLat, outer)) return false;
-      for (let h = 1; h < polyCoords.length; h++) {
-        if (pointInRing(ptLng, ptLat, polyCoords[h])) return false;
-      }
-      return true;
-    }
-
-    function pointInGeometry(ptLng, ptLat, geom) {
-      if (!geom) return false;
-      if (geom.type === "Polygon") {
-        return pointInPolygonCoords(ptLng, ptLat, geom.coordinates);
-      }
-      if (geom.type === "MultiPolygon") {
-        for (const poly of geom.coordinates) {
-          if (pointInPolygonCoords(ptLng, ptLat, poly)) return true;
-        }
-        return false;
-      }
-      return false;
-    }
-
-    async function fetchJson(url) {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-      return r.json();
-    }
-
-    function geometryToGeoJson(geom) {
-      if (!geom) return null;
-      const t = geom.getType();
-
-      if (t === "Polygon") {
-        const rings = [];
-        geom.getArray().forEach(linearRing => {
-          const ring = [];
-          linearRing.getArray().forEach(ll => ring.push([ll.lng(), ll.lat()]));
-          rings.push(ring);
-        });
-        return { type: "Polygon", coordinates: rings };
-      }
-
-      if (t === "MultiPolygon") {
-        const polys = [];
-        geom.getArray().forEach(poly => {
-          const rings = [];
-          poly.getArray().forEach(linearRing => {
-            const ring = [];
-            linearRing.getArray().forEach(ll => ring.push([ll.lng(), ll.lat()]));
-            rings.push(ring);
-          });
-          polys.push(rings);
-        });
-        return { type: "MultiPolygon", coordinates: polys };
-      }
-      return null;
-    }
-
-    // ---------------------------
-    // UI actions
-    // ---------------------------
-    async function reloadSelectedBlock() {
-      const sel = document.getElementById("blockSelect");
-      const blockId = sel.value;
-      if (!blockId) return;
-      await loadBlock(blockId, { fit: true, updateUrl: true });
-    }
-
-    async function copyBlockLink() {
-      const url = new URL(window.location.href);
-      if (currentBlockId) url.searchParams.set("block", currentBlockId);
-      try {
-        await navigator.clipboard.writeText(url.toString());
-        alert("Link copied!");
-      } catch {
-        prompt("Copy this link:", url.toString());
-      }
-    }
-
-    // ---------------------------
-    // Map init
-    // ---------------------------
     async function initMap() {
-      customerId = getCustomerIdFromPath();
-      setText("customerLabel", customerId);
+      const customer = getCustomerIdFromPath();
+      document.getElementById("customerLabel").textContent = customer;
 
       map = new google.maps.Map(document.getElementById("map"), {
         mapTypeId: "satellite",
-        center: { lat: -33.798, lng: 115.078 },
+        center: { lat: -33.8, lng: 115.08 },
         zoom: 17
       });
 
       boundaryLayer = new google.maps.Data({ map });
       zonesLayer = new google.maps.Data({ map });
 
-      // Boundary style
       boundaryLayer.setStyle({
-        strokeColor: "#00FFFF",
-        strokeOpacity: 0.9,
+        strokeColor: "#00ffff",
         strokeWeight: 2,
-        fillColor: "#00FFFF",
-        fillOpacity: 0.08,
-        visible: boundaryVisible
+        fillOpacity: 0.05
       });
 
-      // Zones style
-      zonesLayer.setStyle(styleZoneFeature);
+      zonesLayer.setStyle(styleZone);
 
-      // Zone click popup
-      zonesLayer.addListener("click", (e) => {
-        const zone = Number(e.feature.getProperty("zone"));
-        const rate = e.feature.getProperty("rate");
-        const unit = e.feature.getProperty("unit");
-        const name = e.feature.getProperty("appName") || "";
+      ["z1","z2","z3"].forEach(id =>
+        document.getElementById(id).addEventListener("change", refreshZones)
+      );
 
-        const html = `
-          <strong>${name || "Zone"}</strong><br>
-          <strong>Zone:</strong> ${zone}<br>
-          <strong>Rate:</strong> ${rate} ${unit || ""}
-        `;
-        new google.maps.InfoWindow({ content: html, position: e.latLng }).open(map);
-      });
+      const cfg = await (await fetch(blocksIndexUrl(customer))).json();
+      populateBlocks(cfg);
 
-      // Zone filters
-      document.getElementById("z1").addEventListener("change", refreshZoneStyling);
-      document.getElementById("z2").addEventListener("change", refreshZoneStyling);
-      document.getElementById("z3").addEventListener("change", refreshZoneStyling);
-
-      setText("followLabel", "ON");
-      setText("gpsLabel", "OFF");
-      setText("accLabel", "—");
-      setText("zoneLabel", "—");
-
-      // Load blocks list + populate dropdown
-      try {
-        blocksConfig = await fetchJson(blocksIndexUrl(customerId));
-      } catch (e) {
-        console.error(e);
-        alert(`Couldn't load blocks list.\nExpected: ${blocksIndexUrl(customerId)}\n\nCreate blocks.json for this customer.`);
-        return;
-      }
-
-      populateBlocksDropdown(blocksConfig);
-
-      // Choose initial block:
-      // 1) ?block=...
-      // 2) blocks.json defaultBlock
-      // 3) first block in list
-      const qBlock = getQueryParam("block");
-      const defaultBlock = blocksConfig.defaultBlock || (blocksConfig.blocks?.[0]?.id);
-      const initial = (qBlock && hasBlockId(qBlock)) ? qBlock : defaultBlock;
-
-      if (!initial) {
-        alert("blocks.json has no blocks. Add at least one entry.");
-        return;
-      }
-
-      await loadBlock(initial, { fit: true, updateUrl: true });
+      const initial = getQueryBlock() || cfg.defaultBlock || cfg.blocks[0].id;
+      await loadBlock(customer, initial);
     }
 
-    function hasBlockId(id) {
-      return (blocksConfig?.blocks || []).some(b => b.id === id);
-    }
-
-    function populateBlocksDropdown(cfg) {
+    function populateBlocks(cfg) {
       const sel = document.getElementById("blockSelect");
       sel.innerHTML = "";
-
-      const blocks = cfg.blocks || [];
-      for (const b of blocks) {
-        const opt = document.createElement("option");
-        opt.value = b.id;
-        opt.textContent = b.name ? b.name : b.id;
-        sel.appendChild(opt);
-      }
-
-      // Auto-load on change (nice UX)
-      sel.addEventListener("change", async () => {
-        await loadBlock(sel.value, { fit: true, updateUrl: true });
+      cfg.blocks.forEach(b => {
+        const o = document.createElement("option");
+        o.value = b.id;
+        o.textContent = b.name || b.id;
+        sel.appendChild(o);
       });
+      sel.onchange = () => loadBlock(getCustomerIdFromPath(), sel.value);
     }
 
-    // ---------------------------
-    // Block loading (core)
-    // ---------------------------
-    async function loadBlock(blockId, opts = { fit: true, updateUrl: true }) {
-      const paths = blockDataPaths(customerId, blockId);
+    async function loadBlock(customer, blockId) {
+      currentBlock = blockId;
+      document.getElementById("blockLabel").textContent = blockId;
+      setQueryBlock(blockId);
 
-      // Clear existing layers & caches
-      clearLayersAndCaches();
-
-      // Update labels early
-      currentBlockId = blockId;
-      setText("blockLabel", blockId);
-      setText("pathLabel", `/customers/${customerId}/blocks/${blockId}/`);
-
-      // Ensure dropdown reflects current
-      const sel = document.getElementById("blockSelect");
-      if (sel && sel.value !== blockId) sel.value = blockId;
-
-      // Set URL ?block=...
-      if (opts.updateUrl) setQueryParam("block", blockId);
-
-      try {
-        // Confirm files exist (nice error messages)
-        await assertOk(paths.boundaryUrl);
-        await assertOk(paths.rxUrl);
-
-        // Load
-        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundaryUrl);
-        await loadGeoJsonIntoLayer(zonesLayer, paths.rxUrl);
-
-        // Compute bounds
-        boundaryBounds = computeBoundsForLayer(boundaryLayer);
-        zonesBounds = computeBoundsForLayer(zonesLayer);
-
-        if (opts.fit) {
-          if (boundaryBounds) map.fitBounds(boundaryBounds);
-          else if (zonesBounds) map.fitBounds(zonesBounds);
-        }
-
-        // Build GPS hit-test cache for this block
-        rebuildZoneGeomCache();
-
-        // Re-style zones and re-highlight if GPS already running
-        refreshZoneStyling();
-        if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
-
-      } catch (err) {
-        console.error(err);
-        alert(
-          `Failed to load block "${blockId}" for customer "${customerId}".\n\n` +
-          `Expected:\n${paths.boundaryUrl}\n${paths.rxUrl}\n\n` +
-          `Check the repo paths and filenames.`
-        );
-      }
-    }
-
-    function clearLayersAndCaches() {
       boundaryLayer.forEach(f => boundaryLayer.remove(f));
       zonesLayer.forEach(f => zonesLayer.remove(f));
-
-      boundaryBounds = null;
-      zonesBounds = null;
-
       zoneGeoms = [];
-      highlightedFeatureId = null;
-      setText("zoneLabel", "—");
-    }
 
-    async function assertOk(url) {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-    }
+      const paths = blockDataPaths(customer, blockId);
 
-    function loadGeoJsonIntoLayer(layer, url) {
-      return new Promise((resolve) => {
-        layer.loadGeoJson(url, null, () => resolve());
+      await boundaryLayer.loadGeoJson(paths.boundary);
+      await zonesLayer.loadGeoJson(paths.rx);
+
+      const bounds = new google.maps.LatLngBounds();
+      boundaryLayer.forEach(f => f.getGeometry().forEachLatLng(ll => bounds.extend(ll)));
+      map.fitBounds(bounds);
+
+      zonesLayer.forEach(f => {
+        const z = Number(f.getProperty("zone"));
+        const r = f.getProperty("rate");
+        const u = f.getProperty("unit");
+        const g = geometryToGeoJson(f.getGeometry());
+        zoneGeoms.push({ zone:z, rate:r, unit:u, geo:g });
       });
     }
 
-    function rebuildZoneGeomCache() {
-      zoneGeoms = [];
-      zonesLayer.forEach(feature => {
-        const zone = Number(feature.getProperty("zone"));
-        const rate = feature.getProperty("rate");
-        const unit = feature.getProperty("unit");
-        const geo = geometryToGeoJson(feature.getGeometry());
-
-        // Ensure stable id for highlighting
-        if (feature.getId() == null) feature.setId(`zone-${zone}`);
-
-        zoneGeoms.push({ feature, zone, rate, unit, geo });
-      });
-    }
-
-    // ---------------------------
-    // Styling + filters
-    // ---------------------------
-    function styleZoneFeature(feature) {
-      const zone = Number(feature.getProperty("zone"));
-      const visible = zonesVisible && zoneEnabled(zone);
-
-      const fid = feature.getId();
-      const isHighlighted = (fid != null && fid === highlightedFeatureId);
-
+    function styleZone(f) {
+      const z = Number(f.getProperty("zone"));
+      const enabled =
+        (z===1 && z1.checked) ||
+        (z===2 && z2.checked) ||
+        (z===3 && z3.checked);
       return {
-        fillColor: zoneToColor(zone),
-        fillOpacity: isHighlighted ? 0.75 : 0.55,
-        strokeColor: isHighlighted ? "#00BFFF" : "#000000",
-        strokeOpacity: isHighlighted ? 1.0 : 0.6,
-        strokeWeight: isHighlighted ? 2.5 : 0.6,
-        visible
+        visible: enabled,
+        fillColor: z===1?"#f00":z===2?"#ffa500":"#0f0",
+        fillOpacity: 0.55,
+        strokeWeight: 0.6
       };
     }
 
-    function refreshZoneStyling() {
-      zonesLayer.setStyle(styleZoneFeature);
+    function refreshZones() {
+      zonesLayer.setStyle(styleZone);
     }
 
-    // ---------------------------
-    // Controls
-    // ---------------------------
-    function toggleBoundary() {
-      boundaryVisible = !boundaryVisible;
-      boundaryLayer.setStyle({
-        strokeColor: "#00FFFF",
-        strokeOpacity: 0.9,
-        strokeWeight: 2,
-        fillColor: "#00FFFF",
-        fillOpacity: 0.08,
-        visible: boundaryVisible
+    function geometryToGeoJson(g) {
+      if (!g) return null;
+      if (g.getType()==="Polygon") {
+        return { type:"Polygon", coordinates: g.getArray().map(r=>r.getArray().map(p=>[p.lng(),p.lat()])) };
+      }
+      if (g.getType()==="MultiPolygon") {
+        return { type:"MultiPolygon", coordinates: g.getArray().map(p=>p.getArray().map(r=>r.getArray().map(pt=>[pt.lng(),pt.lat()]))) };
+      }
+    }
+
+    function startGPS() {
+      if (gpsWatch) return;
+      gpsWatch = navigator.geolocation.watchPosition(pos=>{
+        const ll = {lat:pos.coords.latitude,lng:pos.coords.longitude};
+        accLabel.textContent = Math.round(pos.coords.accuracy)+"m";
+        gpsLabel.textContent = "ON";
+
+        if (!gpsMarker) gpsMarker = new google.maps.Marker({ map, position: ll });
+        else gpsMarker.setPosition(ll);
+
+        if (!gpsCircle) gpsCircle = new google.maps.Circle({ map, center: ll, radius: pos.coords.accuracy });
+        else { gpsCircle.setCenter(ll); gpsCircle.setRadius(pos.coords.accuracy); }
+
+        highlightZone(ll);
       });
     }
 
-    function toggleZones() {
-      zonesVisible = !zonesVisible;
-      refreshZoneStyling();
-      if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
-    }
-
-    function fitToBoundary() {
-      if (boundaryBounds) map.fitBounds(boundaryBounds);
-      else alert("Boundary bounds not available.");
-    }
-
-    function fitToZones() {
-      if (zonesBounds) map.fitBounds(zonesBounds);
-      else alert("Zones bounds not available.");
-    }
-
-    function toggleFollow() {
-      followMode = !followMode;
-      setText("followLabel", followMode ? "ON" : "OFF");
-    }
-
-    // ---------------------------
-    // GPS walking
-    // ---------------------------
-    function startGPS() {
-      if (!navigator.geolocation) {
-        alert("Geolocation not supported by this browser.");
-        return;
-      }
-      if (gpsWatchId != null) return;
-
-      setText("gpsLabel", "ON");
-
-      gpsWatchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const acc = pos.coords.accuracy;
-          setText("accLabel", `${Math.round(acc)}m`);
-
-          const ll = new google.maps.LatLng(lat, lng);
-
-          if (!gpsMarker) gpsMarker = new google.maps.Marker({ position: ll, map, title: "You" });
-          else gpsMarker.setPosition(ll);
-
-          if (!gpsAccuracyCircle) {
-            gpsAccuracyCircle = new google.maps.Circle({
-              map,
-              center: ll,
-              radius: acc,
-              strokeOpacity: 0.4,
-              strokeWeight: 1,
-              fillOpacity: 0.12
-            });
-          } else {
-            gpsAccuracyCircle.setCenter(ll);
-            gpsAccuracyCircle.setRadius(acc);
-          }
-
-          if (followMode) map.panTo(ll);
-          highlightZoneAt(ll);
-        },
-        (err) => {
-          console.error("GPS error:", err);
-          setText("gpsLabel", "ERROR");
-          alert("GPS error: " + err.message);
-        },
-        { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
-      );
-    }
-
     function stopGPS() {
-      if (gpsWatchId != null) {
-        navigator.geolocation.clearWatch(gpsWatchId);
-        gpsWatchId = null;
-      }
-      setText("gpsLabel", "OFF");
-      setText("accLabel", "—");
-      setText("zoneLabel", "—");
-
-      if (gpsMarker) { gpsMarker.setMap(null); gpsMarker = null; }
-      if (gpsAccuracyCircle) { gpsAccuracyCircle.setMap(null); gpsAccuracyCircle = null; }
-
-      highlightedFeatureId = null;
-      refreshZoneStyling();
+      if (gpsWatch) navigator.geolocation.clearWatch(gpsWatch);
+      gpsWatch=null;
+      gpsLabel.textContent="OFF";
+      accLabel.textContent="—";
+      zoneLabel.textContent="—";
+      if (gpsMarker) gpsMarker.setMap(null), gpsMarker=null;
+      if (gpsCircle) gpsCircle.setMap(null), gpsCircle=null;
     }
 
-    function highlightZoneAt(latLng) {
-      const ptLng = latLng.lng();
-      const ptLat = latLng.lat();
-
-      let found = null;
+    function highlightZone(pt) {
       for (const z of zoneGeoms) {
-        if (!zonesVisible) continue;
-        if (!zoneEnabled(z.zone)) continue;
-        if (!z.geo) continue;
-        if (pointInGeometry(ptLng, ptLat, z.geo)) { found = z; break; }
+        if (pointInGeom(pt.lng, pt.lat, z.geo)) {
+          zoneLabel.textContent = `Zone ${z.zone} • ${z.rate} ${z.unit||""}`;
+          return;
+        }
       }
+      zoneLabel.textContent = "Outside zones";
+    }
 
-      if (found) {
-        const fid = found.feature.getId();
-        if (highlightedFeatureId !== fid) {
-          highlightedFeatureId = fid;
-          refreshZoneStyling();
-        }
-        setText("zoneLabel", `Zone ${found.zone} • ${found.rate} ${found.unit || ""}`.trim());
-      } else {
-        if (highlightedFeatureId != null) {
-          highlightedFeatureId = null;
-          refreshZoneStyling();
-        }
-        setText("zoneLabel", "Outside zones");
+    function pointInGeom(x,y,g) {
+      if (!g) return false;
+      if (g.type==="Polygon") return pip(x,y,g.coordinates);
+      if (g.type==="MultiPolygon") return g.coordinates.some(p=>pip(x,y,p));
+    }
+
+    function pip(x,y,rings) {
+      let inside=false;
+      const r=rings[0];
+      for(let i=0,j=r.length-1;i<r.length;j=i++){
+        const xi=r[i][0], yi=r[i][1], xj=r[j][0], yj=r[j][1];
+        const hit=((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi);
+        if(hit) inside=!inside;
       }
+      return inside;
     }
   </script>
 </body>
