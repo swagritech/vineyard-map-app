@@ -1,0 +1,7 @@
+{
+  "customer": "Menzies",
+  "defaultBlock": "Block4",
+  "blocks": [
+    { "id": "Block4", "name": "Block 4 (3-zone)" }
+  ]
+}
