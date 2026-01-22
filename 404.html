@@ -10,6 +10,7 @@
   <meta name="theme-color" content="#ffffff">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
   <style>
@@ -92,7 +93,7 @@
   <div id="map"></div>
 
   <script>
-    // Register SW (optional, keep if you already have it)
+    // Register service worker (optional)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/service-worker.js")
@@ -109,7 +110,14 @@
       const raw = window.location.pathname || "/";
       const trimmed = raw.replace(/^\/+|\/+$/g, "");
       if (!trimmed) return DEFAULT_CUSTOMER;
-      return decodeURIComponent(trimmed.split("/")[0]);
+
+      const first = decodeURIComponent(trimmed.split("/")[0]);
+
+      // RESERVED paths: don't treat these as customers
+      const reserved = ["customers", "icons", "favicon.ico", "manifest.webmanifest", "service-worker.js"];
+      if (reserved.includes(first.toLowerCase())) return DEFAULT_CUSTOMER;
+
+      return first;
     }
 
     function dataPaths(customerId) {
@@ -139,8 +147,8 @@
     let gpsMarker = null;
     let gpsAccuracyCircle = null;
 
-    // Keep a lightweight cache of zone geometries for GPS hit testing
-    // Each entry: { feature, zone, rate, unit, geometry } where geometry is GeoJSON MultiPolygon/Polygon
+    // Cache of zone geometries for GPS hit-testing
+    // { feature, zone, rate, unit, geo }
     let zoneGeoms = [];
     let highlightedFeatureId = null;
 
@@ -153,7 +161,6 @@
       if (zone === 1) return "#FF0000";
       if (zone === 2) return "#FFA500";
       if (zone === 3) return "#00FF00";
-      // fallback for zone 4+
       return "#00BFFF";
     }
 
@@ -177,8 +184,7 @@
       return any ? b : null;
     }
 
-    // --- Point in polygon tests (GeoJSON coords) ---
-    // GeoJSON rings use [lng,lat]
+    // GeoJSON coords are [lng, lat]
     function pointInRing(ptLng, ptLat, ring) {
       let inside = false;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -192,19 +198,16 @@
       return inside;
     }
 
-    // Polygon coords: [ outerRing, hole1, hole2... ]
     function pointInPolygonCoords(ptLng, ptLat, polyCoords) {
       if (!polyCoords || polyCoords.length === 0) return false;
       const outer = polyCoords[0];
       if (!pointInRing(ptLng, ptLat, outer)) return false;
-      // if inside any hole -> not inside polygon
       for (let h = 1; h < polyCoords.length; h++) {
         if (pointInRing(ptLng, ptLat, polyCoords[h])) return false;
       }
       return true;
     }
 
-    // Geometry: {type:"Polygon"|"MultiPolygon", coordinates: ...}
     function pointInGeometry(ptLng, ptLat, geom) {
       if (!geom) return false;
       if (geom.type === "Polygon") {
@@ -235,7 +238,6 @@
         zoom: 17
       });
 
-      // Layers
       boundaryLayer = new google.maps.Data({ map });
       zonesLayer = new google.maps.Data({ map });
 
@@ -249,7 +251,7 @@
       setText("accLabel", "—");
       setText("zoneLabel", "—");
 
-      // Style boundary
+      // Boundary style
       boundaryLayer.setStyle({
         strokeColor: "#00FFFF",
         strokeOpacity: 0.9,
@@ -259,7 +261,7 @@
         visible: boundaryVisible
       });
 
-      // Style zones (function so we can filter + highlight)
+      // Zones style
       zonesLayer.setStyle(styleZoneFeature);
 
       // Click popup for zones
@@ -274,15 +276,16 @@
           <strong>Zone:</strong> ${zone}<br>
           <strong>Rate:</strong> ${rate} ${unit || ""}
         `;
-
         new google.maps.InfoWindow({ content: html, position: e.latLng }).open(map);
       });
 
       try {
-        // Load boundary GeoJSON
-        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundaryUrl);
+        // These fetches give you clean 404/permission errors in console if paths are wrong
+        await assertOk(paths.boundaryUrl);
+        await assertOk(paths.rxUrl);
 
-        // Load zones GeoJSON
+        // Load into map layers
+        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundaryUrl);
         await loadGeoJsonIntoLayer(zonesLayer, paths.rxUrl);
 
         // Compute bounds
@@ -292,60 +295,35 @@
         if (boundaryBounds) map.fitBounds(boundaryBounds);
         else if (zonesBounds) map.fitBounds(zonesBounds);
 
-        // Build zone geometry cache for GPS
         rebuildZoneGeomCache();
-
         refreshZoneStyling();
       } catch (err) {
         console.error(err);
         alert(
           `Failed to load data for customer "${customerId}".\n\n` +
           `Expected:\n${paths.boundaryUrl}\n${paths.rxUrl}\n\n` +
-          `Check folder names and that the files exist in the repo.`
+          `Check folder names and that the files exist in the repo.\n` +
+          `Also ensure boundary file is named: boundary.geojson`
         );
       }
     }
 
-    function loadGeoJsonIntoLayer(layer, url) {
-      return new Promise((resolve, reject) => {
-        layer.loadGeoJson(url, { idPropertyName: "id" }, (features) => {
-          if (!features || features.length === 0) {
-            // GeoJSON can omit feature ids; that's fine
-            // but if it truly loaded nothing, flag it
-            console.warn("No features loaded from:", url);
-          }
-          resolve();
-        });
-        // loadGeoJson doesn't provide error callback; fetch to detect 404 quickly
-        fetch(url, { cache: "no-store" })
-          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`); })
-          .catch(reject);
-      });
+    async function assertOk(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
     }
 
-    function rebuildZoneGeomCache() {
-      zoneGeoms = [];
-      zonesLayer.forEach(feature => {
-        const zone = Number(feature.getProperty("zone"));
-        const rate = feature.getProperty("rate");
-        const unit = feature.getProperty("unit");
-
-        // Extract GeoJSON geometry from the Data.Geometry (we’ll approximate by using the original URL fetch would be heavy)
-        // Instead, we’ll reconstruct an equivalent GeoJSON from google.maps.Data geometry:
-        const geo = geometryToGeoJson(feature.getGeometry());
-        zoneGeoms.push({ feature, zone, rate, unit, geo });
+    function loadGeoJsonIntoLayer(layer, url) {
+      return new Promise((resolve) => {
+        layer.loadGeoJson(url, null, () => resolve());
       });
     }
 
     function geometryToGeoJson(geom) {
-      // Converts google.maps.Data.Geometry to GeoJSON-like Polygon/MultiPolygon.
-      // Handles Polygon and MultiPolygon (most common from QGIS export).
       if (!geom) return null;
-
       const t = geom.getType();
 
       if (t === "Polygon") {
-        // Polygon -> array of LinearRings
         const rings = [];
         geom.getArray().forEach(linearRing => {
           const ring = [];
@@ -369,15 +347,29 @@
         return { type: "MultiPolygon", coordinates: polys };
       }
 
-      // Fallback: try to treat LineString/Point etc (not expected here)
       return null;
+    }
+
+    function rebuildZoneGeomCache() {
+      zoneGeoms = [];
+      zonesLayer.forEach(feature => {
+        const zone = Number(feature.getProperty("zone"));
+        const rate = feature.getProperty("rate");
+        const unit = feature.getProperty("unit");
+        const geo = geometryToGeoJson(feature.getGeometry());
+        zoneGeoms.push({ feature, zone, rate, unit, geo });
+
+        // Ensure feature has an id for highlighting
+        if (feature.getId() == null) {
+          feature.setId(`zone-${zone}`);
+        }
+      });
     }
 
     function styleZoneFeature(feature) {
       const zone = Number(feature.getProperty("zone"));
       const visible = zonesVisible && zoneEnabled(zone);
 
-      // Highlight if this is the selected one
       const fid = feature.getId();
       const isHighlighted = (fid != null && fid === highlightedFeatureId);
 
@@ -393,8 +385,6 @@
 
     function refreshZoneStyling() {
       zonesLayer.setStyle(styleZoneFeature);
-
-      // If GPS is on, re-evaluate current highlight if it became invisible
       if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
     }
 
@@ -454,11 +444,8 @@
 
           const ll = new google.maps.LatLng(lat, lng);
 
-          if (!gpsMarker) {
-            gpsMarker = new google.maps.Marker({ position: ll, map, title: "You" });
-          } else {
-            gpsMarker.setPosition(ll);
-          }
+          if (!gpsMarker) gpsMarker = new google.maps.Marker({ position: ll, map, title: "You" });
+          else gpsMarker.setPosition(ll);
 
           if (!gpsAccuracyCircle) {
             gpsAccuracyCircle = new google.maps.Circle({
@@ -509,32 +496,19 @@
 
       let found = null;
 
-      // Find the first zone containing the point, considering filters
       for (const z of zoneGeoms) {
         if (!zonesVisible) continue;
         if (!zoneEnabled(z.zone)) continue;
         if (!z.geo) continue;
-
-        if (pointInGeometry(ptLng, ptLat, z.geo)) {
-          found = z;
-          break;
-        }
+        if (pointInGeometry(ptLng, ptLat, z.geo)) { found = z; break; }
       }
 
       if (found) {
-        // Feature ids might be null if GeoJSON doesn't include id; assign a fallback
-        let fid = found.feature.getId();
-        if (fid == null) {
-          // Use zone as a stable fallback id (works if one polygon per zone)
-          fid = `zone-${found.zone}`;
-          found.feature.setId(fid);
-        }
-
+        const fid = found.feature.getId();
         if (highlightedFeatureId !== fid) {
           highlightedFeatureId = fid;
           refreshZoneStyling();
         }
-
         setText("zoneLabel", `Zone ${found.zone} • ${found.rate} ${found.unit || ""}`.trim());
       } else {
         if (highlightedFeatureId != null) {
