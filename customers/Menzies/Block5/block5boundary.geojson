@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "block5boundary",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "name": "Menzies 030126" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 115.089894348454777, -33.778984259447007 ], [ 115.08960921826008, -33.778843739031409 ], [ 115.090020053496858, -33.77840997372715 ], [ 115.0903056424645, -33.778550494854343 ], [ 115.089894348454777, -33.778984259447007 ] ] ] ] } }
-]
-}
