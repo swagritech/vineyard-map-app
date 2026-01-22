@@ -1,0 +1,5 @@
+# 1) NEVER rewrite real data/assets
+/customers/*  /customers/:splat  200
+
+# 2) App routes (customerId paths) -> serve index.html
+/*  /index.html  200
