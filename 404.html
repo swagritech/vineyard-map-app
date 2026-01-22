@@ -26,19 +26,21 @@
       box-shadow: 0 2px 10px rgba(0,0,0,0.25);
       z-index: 1;
       min-width: 320px;
+      user-select: none;
     }
 
     .row { margin-top: 8px; }
-    .btnRow { display: flex; gap: 6px; }
-    button { flex: 1; padding: 7px; cursor: pointer; }
+    .btnRow { display: flex; gap: 6px; flex-wrap: wrap; }
+    button { flex: 1; padding: 7px 8px; cursor: pointer; }
     select { width: 100%; padding: 6px; }
 
-    .small { font-size: 12px; color: #555; }
-    .mono { font-family: ui-monospace, monospace; }
-    .pill { padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
+    .small { font-size: 12px; color: #555; line-height: 1.25; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
 
     .checkRow { display:flex; gap:10px; flex-wrap:wrap; }
     .checkRow label { font-size: 12px; display:flex; align-items:center; gap:6px; }
+    hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
   </style>
 
   <script
@@ -52,7 +54,8 @@
 
     <div class="row small">
       Customer: <span id="customerLabel" class="mono">—</span><br>
-      Block: <span id="blockLabel" class="mono">—</span>
+      Block: <span id="blockLabel" class="mono">—</span><br>
+      Status: <span id="statusLabel" class="mono">Loading…</span>
     </div>
 
     <div class="row">
@@ -75,6 +78,7 @@
     <div class="btnRow row">
       <button onclick="startGPS()">Start</button>
       <button onclick="stopGPS()">Stop</button>
+      <button onclick="toggleFollow()">Follow: <span id="followLabel" class="mono">ON</span></button>
     </div>
 
     <div class="row small">
@@ -87,49 +91,220 @@
   <div id="map"></div>
 
   <script>
+    // ---------------------------
+    // Config
+    // ---------------------------
     const DEFAULT_CUSTOMER = "Menzies";
 
+    // ---------------------------
+    // Routing helpers
+    // ---------------------------
     function getCustomerIdFromPath() {
       const trimmed = location.pathname.replace(/^\/+|\/+$/g, "");
       if (!trimmed) return DEFAULT_CUSTOMER;
       const first = decodeURIComponent(trimmed.split("/")[0]);
-      if (["customers","icons"].includes(first.toLowerCase())) return DEFAULT_CUSTOMER;
+      const reserved = ["customers", "icons", "favicon.ico", "manifest.webmanifest", "service-worker.js"];
+      if (reserved.includes(first.toLowerCase())) return DEFAULT_CUSTOMER;
       return first;
     }
 
-    function getQueryBlock() {
-      return new URL(location.href).searchParams.get("block");
+    function getQueryParam(name) {
+      return new URL(location.href).searchParams.get(name);
     }
 
-    function setQueryBlock(blockId) {
+    function setQueryParam(name, value) {
       const u = new URL(location.href);
-      u.searchParams.set("block", blockId);
+      if (value == null) u.searchParams.delete(name);
+      else u.searchParams.set(name, value);
       history.replaceState({}, "", u);
     }
 
+    // ---------------------------
+    // Paths
+    // ---------------------------
     function blocksIndexUrl(customer) {
-      return `/customers/${customer}/blocks.json`;
+      return `/customers/${encodeURIComponent(customer)}/blocks.json`;
     }
 
+    // Your naming format:
+    // boundary: block<NUM>boundary.geojson
+    // rx:       block<NUM>rx.geojson
     function blockDataPaths(customer, blockId) {
+      const c = encodeURIComponent(customer);
+      const b = encodeURIComponent(blockId);
       return {
-        boundary: `/customers/${customer}/blocks/${blockId}/block${blockId}boundary.geojson`,
-        rx:       `/customers/${customer}/blocks/${blockId}/block${blockId}rx.geojson`
+        boundary: `/customers/${c}/blocks/${b}/block${b}boundary.geojson`,
+        rx:       `/customers/${c}/blocks/${b}/block${b}rx.geojson`
       };
     }
 
-    let map, boundaryLayer, zonesLayer;
-    let zoneGeoms = [];
+    // ---------------------------
+    // Globals
+    // ---------------------------
+    let map;
+    let boundaryLayer, zonesLayer;
+
+    let customerId = null;
+    let blocksConfig = null;
+    let currentBlockId = null;
+
+    // GPS
     let gpsWatch = null;
     let gpsMarker = null;
     let gpsCircle = null;
-    let currentBlock = null;
+    let followMode = true;
 
+    // Zone hit-testing cache
+    let zoneGeoms = []; // { zone, rate, unit, geo }
+    let highlightedZone = null;
+
+    // ---------------------------
+    // UI helpers
+    // ---------------------------
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (t) => ($("statusLabel").textContent = t);
+
+    function zoneToColor(z) {
+      if (z === 1) return "#ff0000";
+      if (z === 2) return "#ffa500";
+      if (z === 3) return "#00ff00";
+      return "#00bfff";
+    }
+
+    function zoneEnabled(z) {
+      if (z === 1) return $("z1").checked;
+      if (z === 2) return $("z2").checked;
+      if (z === 3) return $("z3").checked;
+      return true;
+    }
+
+    // ---------------------------
+    // GeoJSON loading (IMPORTANT FIX)
+    // ---------------------------
+    function loadGeoJsonIntoLayer(layer, url) {
+      return new Promise((resolve, reject) => {
+        // First fetch so we get real HTTP errors (404 etc.)
+        fetch(url, { cache: "no-store" })
+          .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+            return r.json(); // validate JSON
+          })
+          .then(() => {
+            // Now let Google Maps Data layer load it
+            layer.loadGeoJson(url, null, () => resolve());
+          })
+          .catch(reject);
+      });
+    }
+
+    function computeLayerBounds(layer) {
+      const b = new google.maps.LatLngBounds();
+      let any = false;
+      layer.forEach(f => {
+        const g = f.getGeometry();
+        if (!g) return;
+        g.forEachLatLng(ll => { b.extend(ll); any = true; });
+      });
+      return any ? b : null;
+    }
+
+    // Convert Google Data geometry to GeoJSON-like for point-in-polygon tests
+    function geometryToGeoJson(g) {
+      if (!g) return null;
+      const t = g.getType();
+
+      if (t === "Polygon") {
+        return {
+          type: "Polygon",
+          coordinates: g.getArray().map(ring =>
+            ring.getArray().map(p => [p.lng(), p.lat()])
+          )
+        };
+      }
+
+      if (t === "MultiPolygon") {
+        return {
+          type: "MultiPolygon",
+          coordinates: g.getArray().map(poly =>
+            poly.getArray().map(ring =>
+              ring.getArray().map(p => [p.lng(), p.lat()])
+            )
+          )
+        };
+      }
+
+      return null;
+    }
+
+    // ---------------------------
+    // Point in polygon
+    // ---------------------------
+    function pointInRing(x, y, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1];
+        const xj = ring[j][0], yj = ring[j][1];
+        const intersect =
+          ((yi > y) !== (yj > y)) &&
+          (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function pointInPolygon(x, y, rings) {
+      if (!rings || rings.length === 0) return false;
+      if (!pointInRing(x, y, rings[0])) return false; // outside outer ring
+      // holes
+      for (let h = 1; h < rings.length; h++) {
+        if (pointInRing(x, y, rings[h])) return false;
+      }
+      return true;
+    }
+
+    function pointInGeom(x, y, geom) {
+      if (!geom) return false;
+      if (geom.type === "Polygon") return pointInPolygon(x, y, geom.coordinates);
+      if (geom.type === "MultiPolygon") return geom.coordinates.some(p => pointInPolygon(x, y, p));
+      return false;
+    }
+
+    // ---------------------------
+    // Styling
+    // ---------------------------
+    function styleZones(feature) {
+      const z = Number(feature.getProperty("zone"));
+      const enabled = zoneEnabled(z);
+
+      const isHighlighted = (highlightedZone != null && z === highlightedZone);
+
+      return {
+        visible: enabled,
+        fillColor: zoneToColor(z),
+        fillOpacity: isHighlighted ? 0.75 : 0.55,
+        strokeColor: isHighlighted ? "#00bfff" : "#000000",
+        strokeOpacity: isHighlighted ? 1.0 : 0.6,
+        strokeWeight: isHighlighted ? 2.5 : 0.6
+      };
+    }
+
+    function refreshZones() {
+      zonesLayer.setStyle(styleZones);
+      if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
+    }
+
+    // ---------------------------
+    // Init
+    // ---------------------------
     async function initMap() {
-      const customer = getCustomerIdFromPath();
-      document.getElementById("customerLabel").textContent = customer;
+      customerId = getCustomerIdFromPath();
+      $("customerLabel").textContent = customerId;
+      $("followLabel").textContent = "ON";
+      $("gpsLabel").textContent = "OFF";
+      $("accLabel").textContent = "—";
+      $("zoneLabel").textContent = "—";
 
-      map = new google.maps.Map(document.getElementById("map"), {
+      map = new google.maps.Map($("map"), {
         mapTypeId: "satellite",
         center: { lat: -33.8, lng: 115.08 },
         zoom: 17
@@ -141,141 +316,210 @@
       boundaryLayer.setStyle({
         strokeColor: "#00ffff",
         strokeWeight: 2,
-        fillOpacity: 0.05
+        fillColor: "#00ffff",
+        fillOpacity: 0.06
       });
 
-      zonesLayer.setStyle(styleZone);
+      zonesLayer.setStyle(styleZones);
 
-      ["z1","z2","z3"].forEach(id =>
-        document.getElementById(id).addEventListener("change", refreshZones)
-      );
+      // Filter listeners
+      ["z1","z2","z3"].forEach(id => $(id).addEventListener("change", refreshZones));
 
-      const cfg = await (await fetch(blocksIndexUrl(customer))).json();
-      populateBlocks(cfg);
+      // Load blocks list
+      setStatus("Loading blocks…");
+      try {
+        blocksConfig = await fetchJson(blocksIndexUrl(customerId));
+      } catch (e) {
+        console.error(e);
+        setStatus("ERROR");
+        alert(`Could not load blocks.json.\n\nExpected:\n${blocksIndexUrl(customerId)}\n\nCheck that file exists and is valid JSON.`);
+        return;
+      }
 
-      const initial = getQueryBlock() || cfg.defaultBlock || cfg.blocks[0].id;
-      await loadBlock(customer, initial);
+      populateBlocksDropdown(blocksConfig);
+
+      // Initial block selection
+      const qBlock = getQueryParam("block");
+      const defaultBlock = blocksConfig.defaultBlock || (blocksConfig.blocks?.[0]?.id);
+      const initial = (qBlock && hasBlock(qBlock)) ? qBlock : defaultBlock;
+
+      if (!initial) {
+        setStatus("ERROR");
+        alert("blocks.json contains no blocks.");
+        return;
+      }
+
+      await loadBlock(initial);
     }
 
-    function populateBlocks(cfg) {
-      const sel = document.getElementById("blockSelect");
+    async function fetchJson(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+      return r.json();
+    }
+
+    function hasBlock(id) {
+      return (blocksConfig?.blocks || []).some(b => String(b.id) === String(id));
+    }
+
+    function populateBlocksDropdown(cfg) {
+      const sel = $("blockSelect");
       sel.innerHTML = "";
-      cfg.blocks.forEach(b => {
-        const o = document.createElement("option");
-        o.value = b.id;
-        o.textContent = b.name || b.id;
-        sel.appendChild(o);
+
+      for (const b of (cfg.blocks || [])) {
+        const opt = document.createElement("option");
+        opt.value = String(b.id);
+        opt.textContent = b.name ? b.name : `Block ${b.id}`;
+        sel.appendChild(opt);
+      }
+
+      sel.addEventListener("change", async () => {
+        await loadBlock(sel.value);
       });
-      sel.onchange = () => loadBlock(getCustomerIdFromPath(), sel.value);
     }
 
-    async function loadBlock(customer, blockId) {
-      currentBlock = blockId;
-      document.getElementById("blockLabel").textContent = blockId;
-      setQueryBlock(blockId);
+    // ---------------------------
+    // Block loading
+    // ---------------------------
+    async function loadBlock(blockId) {
+      currentBlockId = String(blockId);
+      $("blockLabel").textContent = currentBlockId;
+      setQueryParam("block", currentBlockId);
 
+      // Keep dropdown in sync
+      const sel = $("blockSelect");
+      if (sel.value !== currentBlockId) sel.value = currentBlockId;
+
+      // Clear old features/caches
       boundaryLayer.forEach(f => boundaryLayer.remove(f));
       zonesLayer.forEach(f => zonesLayer.remove(f));
       zoneGeoms = [];
+      highlightedZone = null;
+      $("zoneLabel").textContent = "—";
 
-      const paths = blockDataPaths(customer, blockId);
+      const paths = blockDataPaths(customerId, currentBlockId);
+      setStatus("Loading block data…");
 
-      await boundaryLayer.loadGeoJson(paths.boundary);
-      await zonesLayer.loadGeoJson(paths.rx);
+      try {
+        // IMPORTANT: these wait until data is actually loaded (prevents “ocean”)
+        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundary);
+        await loadGeoJsonIntoLayer(zonesLayer, paths.rx);
 
-      const bounds = new google.maps.LatLngBounds();
-      boundaryLayer.forEach(f => f.getGeometry().forEachLatLng(ll => bounds.extend(ll)));
-      map.fitBounds(bounds);
+        // Fit bounds (prefer boundary; fallback zones)
+        const b1 = computeLayerBounds(boundaryLayer);
+        const b2 = computeLayerBounds(zonesLayer);
+        const bounds = b1 || b2;
 
-      zonesLayer.forEach(f => {
-        const z = Number(f.getProperty("zone"));
-        const r = f.getProperty("rate");
-        const u = f.getProperty("unit");
-        const g = geometryToGeoJson(f.getGeometry());
-        zoneGeoms.push({ zone:z, rate:r, unit:u, geo:g });
-      });
-    }
+        if (bounds) map.fitBounds(bounds);
 
-    function styleZone(f) {
-      const z = Number(f.getProperty("zone"));
-      const enabled =
-        (z===1 && z1.checked) ||
-        (z===2 && z2.checked) ||
-        (z===3 && z3.checked);
-      return {
-        visible: enabled,
-        fillColor: z===1?"#f00":z===2?"#ffa500":"#0f0",
-        fillOpacity: 0.55,
-        strokeWeight: 0.6
-      };
-    }
+        // Build hit-test cache
+        zonesLayer.forEach(f => {
+          const z = Number(f.getProperty("zone"));
+          const r = f.getProperty("rate");
+          const u = f.getProperty("unit");
+          const geo = geometryToGeoJson(f.getGeometry());
+          zoneGeoms.push({ zone: z, rate: r, unit: u, geo });
+        });
 
-    function refreshZones() {
-      zonesLayer.setStyle(styleZone);
-    }
+        refreshZones();
+        if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
 
-    function geometryToGeoJson(g) {
-      if (!g) return null;
-      if (g.getType()==="Polygon") {
-        return { type:"Polygon", coordinates: g.getArray().map(r=>r.getArray().map(p=>[p.lng(),p.lat()])) };
+        setStatus("OK");
+      } catch (e) {
+        console.error(e);
+        setStatus("ERROR");
+        alert(
+          `Failed to load block ${currentBlockId}.\n\n` +
+          `Expected:\n${paths.boundary}\n${paths.rx}\n\n` +
+          `Check the file paths exist and are valid GeoJSON.`
+        );
       }
-      if (g.getType()==="MultiPolygon") {
-        return { type:"MultiPolygon", coordinates: g.getArray().map(p=>p.getArray().map(r=>r.getArray().map(pt=>[pt.lng(),pt.lat()]))) };
-      }
+    }
+
+    // ---------------------------
+    // GPS
+    // ---------------------------
+    function toggleFollow() {
+      followMode = !followMode;
+      $("followLabel").textContent = followMode ? "ON" : "OFF";
     }
 
     function startGPS() {
+      if (!navigator.geolocation) {
+        alert("Geolocation not supported.");
+        return;
+      }
       if (gpsWatch) return;
-      gpsWatch = navigator.geolocation.watchPosition(pos=>{
-        const ll = {lat:pos.coords.latitude,lng:pos.coords.longitude};
-        accLabel.textContent = Math.round(pos.coords.accuracy)+"m";
-        gpsLabel.textContent = "ON";
 
-        if (!gpsMarker) gpsMarker = new google.maps.Marker({ map, position: ll });
-        else gpsMarker.setPosition(ll);
+      $("gpsLabel").textContent = "ON";
 
-        if (!gpsCircle) gpsCircle = new google.maps.Circle({ map, center: ll, radius: pos.coords.accuracy });
-        else { gpsCircle.setCenter(ll); gpsCircle.setRadius(pos.coords.accuracy); }
+      gpsWatch = navigator.geolocation.watchPosition(
+        (pos) => {
+          const ll = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+          $("accLabel").textContent = `${Math.round(pos.coords.accuracy)}m`;
 
-        highlightZone(ll);
-      });
+          if (!gpsMarker) gpsMarker = new google.maps.Marker({ map, position: ll, title: "You" });
+          else gpsMarker.setPosition(ll);
+
+          if (!gpsCircle) {
+            gpsCircle = new google.maps.Circle({
+              map,
+              center: ll,
+              radius: pos.coords.accuracy,
+              strokeOpacity: 0.4,
+              strokeWeight: 1,
+              fillOpacity: 0.12
+            });
+          } else {
+            gpsCircle.setCenter(ll);
+            gpsCircle.setRadius(pos.coords.accuracy);
+          }
+
+          if (followMode) map.panTo(ll);
+          highlightZoneAt(ll);
+        },
+        (err) => {
+          console.error(err);
+          $("gpsLabel").textContent = "ERROR";
+          alert("GPS Error: " + err.message);
+        },
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+      );
     }
 
     function stopGPS() {
       if (gpsWatch) navigator.geolocation.clearWatch(gpsWatch);
-      gpsWatch=null;
-      gpsLabel.textContent="OFF";
-      accLabel.textContent="—";
-      zoneLabel.textContent="—";
-      if (gpsMarker) gpsMarker.setMap(null), gpsMarker=null;
-      if (gpsCircle) gpsCircle.setMap(null), gpsCircle=null;
+      gpsWatch = null;
+
+      $("gpsLabel").textContent = "OFF";
+      $("accLabel").textContent = "—";
+      $("zoneLabel").textContent = "—";
+      highlightedZone = null;
+      refreshZones();
+
+      if (gpsMarker) { gpsMarker.setMap(null); gpsMarker = null; }
+      if (gpsCircle) { gpsCircle.setMap(null); gpsCircle = null; }
     }
 
-    function highlightZone(pt) {
+    function highlightZoneAt(latLng) {
+      const x = latLng.lng();
+      const y = latLng.lat();
+
+      let found = null;
       for (const z of zoneGeoms) {
-        if (pointInGeom(pt.lng, pt.lat, z.geo)) {
-          zoneLabel.textContent = `Zone ${z.zone} • ${z.rate} ${z.unit||""}`;
-          return;
-        }
+        if (!zoneEnabled(z.zone)) continue;
+        if (pointInGeom(x, y, z.geo)) { found = z; break; }
       }
-      zoneLabel.textContent = "Outside zones";
-    }
 
-    function pointInGeom(x,y,g) {
-      if (!g) return false;
-      if (g.type==="Polygon") return pip(x,y,g.coordinates);
-      if (g.type==="MultiPolygon") return g.coordinates.some(p=>pip(x,y,p));
-    }
-
-    function pip(x,y,rings) {
-      let inside=false;
-      const r=rings[0];
-      for(let i=0,j=r.length-1;i<r.length;j=i++){
-        const xi=r[i][0], yi=r[i][1], xj=r[j][0], yj=r[j][1];
-        const hit=((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi);
-        if(hit) inside=!inside;
+      if (found) {
+        highlightedZone = found.zone;
+        $("zoneLabel").textContent = `Zone ${found.zone} • ${found.rate} ${found.unit || ""}`.trim();
+      } else {
+        highlightedZone = null;
+        $("zoneLabel").textContent = "Outside zones";
       }
-      return inside;
+
+      refreshZones();
     }
   </script>
 </body>
