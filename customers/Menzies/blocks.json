@@ -2,6 +2,11 @@
   "customer": "Menzies",
   "defaultBlock": "Block4",
   "blocks": [
-    { "id": "Block4", "name": "Block 4 (3-zone)" }
+    { "id": "Block1", "name": "Block 4" }
+    { "id": "Block2", "name": "Block 2" }
+    { "id": "Block3", "name": "Block 3" }
+    { "id": "Block4", "name": "Block 4" }
+    { "id": "Block5", "name": "Block 5" }
+    { "id": "Block6", "name": "Block 6" }      
   ]
 }
