@@ -105,12 +105,17 @@
     // ---------------------------
     const DEFAULT_CUSTOMER = "Menzies";
 
-    function getCustomerIdFromPath() {
-      const raw = window.location.pathname || "/";
-      const trimmed = raw.replace(/^\/+|\/+$/g, "");
-      if (!trimmed) return DEFAULT_CUSTOMER;
-      return decodeURIComponent(trimmed.split("/")[0]);
-    }
+function getCustomerIdFromPath() {
+  const raw = window.location.pathname || "/";
+  const trimmed = raw.replace(/^\/+|\/+$/g, "");
+  if (!trimmed) return DEFAULT_CUSTOMER;
+
+  const first = decodeURIComponent(trimmed.split("/")[0]);
+  if (first.toLowerCase() === "customers") return DEFAULT_CUSTOMER; // reserved
+  if (first.toLowerCase() === "icons") return DEFAULT_CUSTOMER;     // reserved
+  return first;
+}
+
 
     function dataPaths(customerId) {
       const enc = encodeURIComponent(customerId);
@@ -547,3 +552,4 @@
   </script>
 </body>
 </html>
+
