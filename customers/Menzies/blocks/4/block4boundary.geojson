@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "NDREBlock4Boundary",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "name": "Menzies 030126" }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 115.089801864210074, -33.779528711104064 ], [ 115.09013562755257, -33.779426982954156 ], [ 115.090291422174175, -33.779920303494464 ], [ 115.08994930754568, -33.780024663993416 ], [ 115.089801864210074, -33.779528711104064 ] ] ] ] } }
+]
+}
