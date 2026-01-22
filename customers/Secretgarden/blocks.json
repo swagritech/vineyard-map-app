@@ -1,0 +1,7 @@
+{
+  "customer": "Menzies",
+  "defaultBlock": "1",
+  "blocks": [
+    { "id": "1", "name": "Block 1" }
+  ]
+}
