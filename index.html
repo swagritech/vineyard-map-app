@@ -25,7 +25,7 @@
       border-radius: 10px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.25);
       z-index: 1;
-      min-width: 320px;
+      min-width: 340px;
       user-select: none;
     }
     .row { margin-top: 8px; }
@@ -42,6 +42,7 @@
     }
     .checkRow { display:flex; gap:10px; flex-wrap:wrap; }
     .checkRow label { font-size: 12px; display:flex; align-items:center; gap:6px; }
+    select { width: 100%; padding: 6px; }
   </style>
 
   <script
@@ -55,7 +56,20 @@
 
     <div class="row small">
       Customer: <span id="customerLabel" class="mono">—</span><br>
-      Data path: <span id="pathLabel" class="mono">—</span>
+      Block: <span id="blockLabel" class="mono">—</span><br>
+      Data: <span id="pathLabel" class="mono">—</span>
+    </div>
+
+    <div class="row">
+      <label class="small"><strong>Select block</strong></label>
+      <select id="blockSelect"></select>
+      <div class="btnRow row">
+        <button onclick="reloadSelectedBlock()">Load block</button>
+        <button onclick="copyBlockLink()">Copy link</button>
+      </div>
+      <div class="small">
+        Tip: you can deep-link blocks with <span class="mono">?block=Block4</span>
+      </div>
     </div>
 
     <div class="btnRow row">
@@ -85,7 +99,8 @@
     </div>
 
     <div class="row small">
-      GPS: <span id="gpsLabel" class="mono">OFF</span> &nbsp; Accuracy: <span id="accLabel" class="mono">—</span><br>
+      GPS: <span id="gpsLabel" class="mono">OFF</span>
+      &nbsp; Accuracy: <span id="accLabel" class="mono">—</span><br>
       You are in: <span id="zoneLabel" class="pill">—</span>
     </div>
   </div>
@@ -93,16 +108,15 @@
   <div id="map"></div>
 
   <script>
-    // Register service worker (optional)
+    // Optional SW (if you have one)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/service-worker.js")
-          .catch(err => console.warn("SW registration failed:", err));
+        navigator.serviceWorker.register("/service-worker.js").catch(() => {});
       });
     }
 
     // ---------------------------
-    // Multi-customer routing
+    // Routing + config
     // ---------------------------
     const DEFAULT_CUSTOMER = "Menzies";
 
@@ -112,19 +126,34 @@
       if (!trimmed) return DEFAULT_CUSTOMER;
 
       const first = decodeURIComponent(trimmed.split("/")[0]);
-
-      // RESERVED paths: don't treat these as customers
       const reserved = ["customers", "icons", "favicon.ico", "manifest.webmanifest", "service-worker.js"];
       if (reserved.includes(first.toLowerCase())) return DEFAULT_CUSTOMER;
-
       return first;
     }
 
-    function dataPaths(customerId) {
-      const enc = encodeURIComponent(customerId);
+    function getQueryParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name);
+    }
+
+    function setQueryParam(name, value) {
+      const url = new URL(window.location.href);
+      if (value == null) url.searchParams.delete(name);
+      else url.searchParams.set(name, value);
+      // replaceState so it doesn't refresh the page
+      history.replaceState({}, "", url.toString());
+    }
+
+    function blocksIndexUrl(customerId) {
+      return `/customers/${encodeURIComponent(customerId)}/blocks.json`;
+    }
+
+    function blockDataPaths(customerId, blockId) {
+      const c = encodeURIComponent(customerId);
+      const b = encodeURIComponent(blockId);
       return {
-        boundaryUrl: `/customers/${enc}/boundary.geojson`,
-        rxUrl:       `/customers/${enc}/rx.geojson`,
+        boundaryUrl: `/customers/${c}/blocks/${b}/boundary.geojson`,
+        rxUrl:       `/customers/${c}/blocks/${b}/rx.geojson`
       };
     }
 
@@ -147,10 +176,14 @@
     let gpsMarker = null;
     let gpsAccuracyCircle = null;
 
-    // Cache of zone geometries for GPS hit-testing
     // { feature, zone, rate, unit, geo }
     let zoneGeoms = [];
     let highlightedFeatureId = null;
+
+    // Customer + blocks config
+    let customerId = null;
+    let blocksConfig = null;
+    let currentBlockId = null;
 
     // ---------------------------
     // Helpers
@@ -174,17 +207,15 @@
     function computeBoundsForLayer(layer) {
       const b = new google.maps.LatLngBounds();
       let any = false;
-
       layer.forEach(feature => {
         const geom = feature.getGeometry();
         if (!geom) return;
         geom.forEachLatLng(ll => { b.extend(ll); any = true; });
       });
-
       return any ? b : null;
     }
 
-    // GeoJSON coords are [lng, lat]
+    // GeoJSON coords [lng, lat]
     function pointInRing(ptLng, ptLat, ring) {
       let inside = false;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -222,101 +253,10 @@
       return false;
     }
 
-    // ---------------------------
-    // Init
-    // ---------------------------
-    async function initMap() {
-      const customerId = getCustomerIdFromPath();
-      const paths = dataPaths(customerId);
-
-      setText("customerLabel", customerId);
-      setText("pathLabel", `/customers/${customerId}/`);
-
-      map = new google.maps.Map(document.getElementById("map"), {
-        mapTypeId: "satellite",
-        center: { lat: -33.798, lng: 115.078 },
-        zoom: 17
-      });
-
-      boundaryLayer = new google.maps.Data({ map });
-      zonesLayer = new google.maps.Data({ map });
-
-      // UI hooks
-      document.getElementById("z1").addEventListener("change", refreshZoneStyling);
-      document.getElementById("z2").addEventListener("change", refreshZoneStyling);
-      document.getElementById("z3").addEventListener("change", refreshZoneStyling);
-
-      setText("followLabel", "ON");
-      setText("gpsLabel", "OFF");
-      setText("accLabel", "—");
-      setText("zoneLabel", "—");
-
-      // Boundary style
-      boundaryLayer.setStyle({
-        strokeColor: "#00FFFF",
-        strokeOpacity: 0.9,
-        strokeWeight: 2,
-        fillColor: "#00FFFF",
-        fillOpacity: 0.08,
-        visible: boundaryVisible
-      });
-
-      // Zones style
-      zonesLayer.setStyle(styleZoneFeature);
-
-      // Click popup for zones
-      zonesLayer.addListener("click", (e) => {
-        const zone = Number(e.feature.getProperty("zone"));
-        const rate = e.feature.getProperty("rate");
-        const unit = e.feature.getProperty("unit");
-        const name = e.feature.getProperty("appName") || "";
-
-        const html = `
-          <strong>${name || "Zone"}</strong><br>
-          <strong>Zone:</strong> ${zone}<br>
-          <strong>Rate:</strong> ${rate} ${unit || ""}
-        `;
-        new google.maps.InfoWindow({ content: html, position: e.latLng }).open(map);
-      });
-
-      try {
-        // These fetches give you clean 404/permission errors in console if paths are wrong
-        await assertOk(paths.boundaryUrl);
-        await assertOk(paths.rxUrl);
-
-        // Load into map layers
-        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundaryUrl);
-        await loadGeoJsonIntoLayer(zonesLayer, paths.rxUrl);
-
-        // Compute bounds
-        boundaryBounds = computeBoundsForLayer(boundaryLayer);
-        zonesBounds = computeBoundsForLayer(zonesLayer);
-
-        if (boundaryBounds) map.fitBounds(boundaryBounds);
-        else if (zonesBounds) map.fitBounds(zonesBounds);
-
-        rebuildZoneGeomCache();
-        refreshZoneStyling();
-      } catch (err) {
-        console.error(err);
-        alert(
-          `Failed to load data for customer "${customerId}".\n\n` +
-          `Expected:\n${paths.boundaryUrl}\n${paths.rxUrl}\n\n` +
-          `Check folder names and that the files exist in the repo.\n` +
-          `Also ensure boundary file is named: boundary.geojson`
-        );
-      }
-    }
-
-    async function assertOk(url) {
+    async function fetchJson(url) {
       const r = await fetch(url, { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-    }
-
-    function loadGeoJsonIntoLayer(layer, url) {
-      return new Promise((resolve) => {
-        layer.loadGeoJson(url, null, () => resolve());
-      });
+      return r.json();
     }
 
     function geometryToGeoJson(geom) {
@@ -346,8 +286,210 @@
         });
         return { type: "MultiPolygon", coordinates: polys };
       }
-
       return null;
+    }
+
+    // ---------------------------
+    // UI actions
+    // ---------------------------
+    async function reloadSelectedBlock() {
+      const sel = document.getElementById("blockSelect");
+      const blockId = sel.value;
+      if (!blockId) return;
+      await loadBlock(blockId, { fit: true, updateUrl: true });
+    }
+
+    async function copyBlockLink() {
+      const url = new URL(window.location.href);
+      if (currentBlockId) url.searchParams.set("block", currentBlockId);
+      try {
+        await navigator.clipboard.writeText(url.toString());
+        alert("Link copied!");
+      } catch {
+        prompt("Copy this link:", url.toString());
+      }
+    }
+
+    // ---------------------------
+    // Map init
+    // ---------------------------
+    async function initMap() {
+      customerId = getCustomerIdFromPath();
+      setText("customerLabel", customerId);
+
+      map = new google.maps.Map(document.getElementById("map"), {
+        mapTypeId: "satellite",
+        center: { lat: -33.798, lng: 115.078 },
+        zoom: 17
+      });
+
+      boundaryLayer = new google.maps.Data({ map });
+      zonesLayer = new google.maps.Data({ map });
+
+      // Boundary style
+      boundaryLayer.setStyle({
+        strokeColor: "#00FFFF",
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: "#00FFFF",
+        fillOpacity: 0.08,
+        visible: boundaryVisible
+      });
+
+      // Zones style
+      zonesLayer.setStyle(styleZoneFeature);
+
+      // Zone click popup
+      zonesLayer.addListener("click", (e) => {
+        const zone = Number(e.feature.getProperty("zone"));
+        const rate = e.feature.getProperty("rate");
+        const unit = e.feature.getProperty("unit");
+        const name = e.feature.getProperty("appName") || "";
+
+        const html = `
+          <strong>${name || "Zone"}</strong><br>
+          <strong>Zone:</strong> ${zone}<br>
+          <strong>Rate:</strong> ${rate} ${unit || ""}
+        `;
+        new google.maps.InfoWindow({ content: html, position: e.latLng }).open(map);
+      });
+
+      // Zone filters
+      document.getElementById("z1").addEventListener("change", refreshZoneStyling);
+      document.getElementById("z2").addEventListener("change", refreshZoneStyling);
+      document.getElementById("z3").addEventListener("change", refreshZoneStyling);
+
+      setText("followLabel", "ON");
+      setText("gpsLabel", "OFF");
+      setText("accLabel", "—");
+      setText("zoneLabel", "—");
+
+      // Load blocks list + populate dropdown
+      try {
+        blocksConfig = await fetchJson(blocksIndexUrl(customerId));
+      } catch (e) {
+        console.error(e);
+        alert(`Couldn't load blocks list.\nExpected: ${blocksIndexUrl(customerId)}\n\nCreate blocks.json for this customer.`);
+        return;
+      }
+
+      populateBlocksDropdown(blocksConfig);
+
+      // Choose initial block:
+      // 1) ?block=...
+      // 2) blocks.json defaultBlock
+      // 3) first block in list
+      const qBlock = getQueryParam("block");
+      const defaultBlock = blocksConfig.defaultBlock || (blocksConfig.blocks?.[0]?.id);
+      const initial = (qBlock && hasBlockId(qBlock)) ? qBlock : defaultBlock;
+
+      if (!initial) {
+        alert("blocks.json has no blocks. Add at least one entry.");
+        return;
+      }
+
+      await loadBlock(initial, { fit: true, updateUrl: true });
+    }
+
+    function hasBlockId(id) {
+      return (blocksConfig?.blocks || []).some(b => b.id === id);
+    }
+
+    function populateBlocksDropdown(cfg) {
+      const sel = document.getElementById("blockSelect");
+      sel.innerHTML = "";
+
+      const blocks = cfg.blocks || [];
+      for (const b of blocks) {
+        const opt = document.createElement("option");
+        opt.value = b.id;
+        opt.textContent = b.name ? b.name : b.id;
+        sel.appendChild(opt);
+      }
+
+      // Auto-load on change (nice UX)
+      sel.addEventListener("change", async () => {
+        await loadBlock(sel.value, { fit: true, updateUrl: true });
+      });
+    }
+
+    // ---------------------------
+    // Block loading (core)
+    // ---------------------------
+    async function loadBlock(blockId, opts = { fit: true, updateUrl: true }) {
+      const paths = blockDataPaths(customerId, blockId);
+
+      // Clear existing layers & caches
+      clearLayersAndCaches();
+
+      // Update labels early
+      currentBlockId = blockId;
+      setText("blockLabel", blockId);
+      setText("pathLabel", `/customers/${customerId}/blocks/${blockId}/`);
+
+      // Ensure dropdown reflects current
+      const sel = document.getElementById("blockSelect");
+      if (sel && sel.value !== blockId) sel.value = blockId;
+
+      // Set URL ?block=...
+      if (opts.updateUrl) setQueryParam("block", blockId);
+
+      try {
+        // Confirm files exist (nice error messages)
+        await assertOk(paths.boundaryUrl);
+        await assertOk(paths.rxUrl);
+
+        // Load
+        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundaryUrl);
+        await loadGeoJsonIntoLayer(zonesLayer, paths.rxUrl);
+
+        // Compute bounds
+        boundaryBounds = computeBoundsForLayer(boundaryLayer);
+        zonesBounds = computeBoundsForLayer(zonesLayer);
+
+        if (opts.fit) {
+          if (boundaryBounds) map.fitBounds(boundaryBounds);
+          else if (zonesBounds) map.fitBounds(zonesBounds);
+        }
+
+        // Build GPS hit-test cache for this block
+        rebuildZoneGeomCache();
+
+        // Re-style zones and re-highlight if GPS already running
+        refreshZoneStyling();
+        if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
+
+      } catch (err) {
+        console.error(err);
+        alert(
+          `Failed to load block "${blockId}" for customer "${customerId}".\n\n` +
+          `Expected:\n${paths.boundaryUrl}\n${paths.rxUrl}\n\n` +
+          `Check the repo paths and filenames.`
+        );
+      }
+    }
+
+    function clearLayersAndCaches() {
+      boundaryLayer.forEach(f => boundaryLayer.remove(f));
+      zonesLayer.forEach(f => zonesLayer.remove(f));
+
+      boundaryBounds = null;
+      zonesBounds = null;
+
+      zoneGeoms = [];
+      highlightedFeatureId = null;
+      setText("zoneLabel", "—");
+    }
+
+    async function assertOk(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    }
+
+    function loadGeoJsonIntoLayer(layer, url) {
+      return new Promise((resolve) => {
+        layer.loadGeoJson(url, null, () => resolve());
+      });
     }
 
     function rebuildZoneGeomCache() {
@@ -357,15 +499,17 @@
         const rate = feature.getProperty("rate");
         const unit = feature.getProperty("unit");
         const geo = geometryToGeoJson(feature.getGeometry());
-        zoneGeoms.push({ feature, zone, rate, unit, geo });
 
-        // Ensure feature has an id for highlighting
-        if (feature.getId() == null) {
-          feature.setId(`zone-${zone}`);
-        }
+        // Ensure stable id for highlighting
+        if (feature.getId() == null) feature.setId(`zone-${zone}`);
+
+        zoneGeoms.push({ feature, zone, rate, unit, geo });
       });
     }
 
+    // ---------------------------
+    // Styling + filters
+    // ---------------------------
     function styleZoneFeature(feature) {
       const zone = Number(feature.getProperty("zone"));
       const visible = zonesVisible && zoneEnabled(zone);
@@ -385,7 +529,6 @@
 
     function refreshZoneStyling() {
       zonesLayer.setStyle(styleZoneFeature);
-      if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
     }
 
     // ---------------------------
@@ -406,6 +549,7 @@
     function toggleZones() {
       zonesVisible = !zonesVisible;
       refreshZoneStyling();
+      if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
     }
 
     function fitToBoundary() {
@@ -424,7 +568,7 @@
     }
 
     // ---------------------------
-    // GPS Walking mode
+    // GPS walking
     // ---------------------------
     function startGPS() {
       if (!navigator.geolocation) {
@@ -462,7 +606,6 @@
           }
 
           if (followMode) map.panTo(ll);
-
           highlightZoneAt(ll);
         },
         (err) => {
@@ -495,7 +638,6 @@
       const ptLat = latLng.lat();
 
       let found = null;
-
       for (const z of zoneGeoms) {
         if (!zonesVisible) continue;
         if (!zoneEnabled(z.zone)) continue;
