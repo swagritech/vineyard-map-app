@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SwagriTech Vineyard Maps</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    #map { height: 100vh; width: 100%; }
+
+    .controls {
+      position: absolute;
+      top: 10px; left: 10px;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      z-index: 1;
+      min-width: 320px;
+      user-select: none;
+    }
+    .row { margin-top: 8px; }
+    .btnRow { display: flex; gap: 6px; flex-wrap: wrap; }
+    button { flex: 1; padding: 7px 8px; cursor: pointer; }
+    .small { font-size: 12px; color: #555; line-height: 1.25; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #f2f2f2;
+      font-size: 12px;
+    }
+    .checkRow { display:flex; gap:10px; flex-wrap:wrap; }
+    .checkRow label { font-size: 12px; display:flex; align-items:center; gap:6px; }
+  </style>
+
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap"
+    async defer></script>
+</head>
+
+<body>
+  <div class="controls">
+    <strong>SwagriTech Vineyard Maps</strong>
+
+    <div class="row small">
+      Customer: <span id="customerLabel" class="mono">—</span><br>
+      Data path: <span id="pathLabel" class="mono">—</span>
+    </div>
+
+    <div class="btnRow row">
+      <button onclick="toggleBoundary()">Boundary</button>
+      <button onclick="toggleZones()">Zones</button>
+      <button onclick="fitToBoundary()">Fit boundary</button>
+      <button onclick="fitToZones()">Fit zones</button>
+    </div>
+
+    <div class="row">
+      <strong>Zone filters</strong>
+      <div class="checkRow">
+        <label><input type="checkbox" id="z1" checked> Zone 1</label>
+        <label><input type="checkbox" id="z2" checked> Zone 2</label>
+        <label><input type="checkbox" id="z3" checked> Zone 3</label>
+      </div>
+      <div class="small">Colours are controlled by zone number (1=red, 2=orange, 3=green).</div>
+    </div>
+
+    <hr style="margin:10px 0; border:none; border-top:1px solid #eee;">
+
+    <strong>GPS Walking</strong>
+    <div class="btnRow row">
+      <button onclick="startGPS()">Start GPS</button>
+      <button onclick="stopGPS()">Stop GPS</button>
+      <button onclick="toggleFollow()">Follow: <span id="followLabel" class="mono">ON</span></button>
+    </div>
+
+    <div class="row small">
+      GPS: <span id="gpsLabel" class="mono">OFF</span> &nbsp; Accuracy: <span id="accLabel" class="mono">—</span><br>
+      You are in: <span id="zoneLabel" class="pill">—</span>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    // Register SW (optional, keep if you already have it)
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/service-worker.js")
+          .catch(err => console.warn("SW registration failed:", err));
+      });
+    }
+
+    // ---------------------------
+    // Multi-customer routing
+    // ---------------------------
+    const DEFAULT_CUSTOMER = "Menzies";
+
+    function getCustomerIdFromPath() {
+      const raw = window.location.pathname || "/";
+      const trimmed = raw.replace(/^\/+|\/+$/g, "");
+      if (!trimmed) return DEFAULT_CUSTOMER;
+      return decodeURIComponent(trimmed.split("/")[0]);
+    }
+
+    function dataPaths(customerId) {
+      const enc = encodeURIComponent(customerId);
+      return {
+        boundaryUrl: `/customers/${enc}/boundary.geojson`,
+        rxUrl:       `/customers/${enc}/rx.geojson`,
+      };
+    }
+
+    // ---------------------------
+    // Globals
+    // ---------------------------
+    let map;
+
+    let boundaryLayer;
+    let zonesLayer;
+
+    let boundaryVisible = true;
+    let zonesVisible = true;
+
+    let boundaryBounds = null;
+    let zonesBounds = null;
+
+    let followMode = true;
+    let gpsWatchId = null;
+    let gpsMarker = null;
+    let gpsAccuracyCircle = null;
+
+    // Keep a lightweight cache of zone geometries for GPS hit testing
+    // Each entry: { feature, zone, rate, unit, geometry } where geometry is GeoJSON MultiPolygon/Polygon
+    let zoneGeoms = [];
+    let highlightedFeatureId = null;
+
+    // ---------------------------
+    // Helpers
+    // ---------------------------
+    const setText = (id, t) => (document.getElementById(id).textContent = t);
+
+    function zoneToColor(zone) {
+      if (zone === 1) return "#FF0000";
+      if (zone === 2) return "#FFA500";
+      if (zone === 3) return "#00FF00";
+      // fallback for zone 4+
+      return "#00BFFF";
+    }
+
+    function zoneEnabled(zone) {
+      if (zone === 1) return document.getElementById("z1").checked;
+      if (zone === 2) return document.getElementById("z2").checked;
+      if (zone === 3) return document.getElementById("z3").checked;
+      return true;
+    }
+
+    function computeBoundsForLayer(layer) {
+      const b = new google.maps.LatLngBounds();
+      let any = false;
+
+      layer.forEach(feature => {
+        const geom = feature.getGeometry();
+        if (!geom) return;
+        geom.forEachLatLng(ll => { b.extend(ll); any = true; });
+      });
+
+      return any ? b : null;
+    }
+
+    // --- Point in polygon tests (GeoJSON coords) ---
+    // GeoJSON rings use [lng,lat]
+    function pointInRing(ptLng, ptLat, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1];
+        const xj = ring[j][0], yj = ring[j][1];
+        const intersect =
+          ((yi > ptLat) !== (yj > ptLat)) &&
+          (ptLng < (xj - xi) * (ptLat - yi) / ((yj - yi) || 1e-12) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    // Polygon coords: [ outerRing, hole1, hole2... ]
+    function pointInPolygonCoords(ptLng, ptLat, polyCoords) {
+      if (!polyCoords || polyCoords.length === 0) return false;
+      const outer = polyCoords[0];
+      if (!pointInRing(ptLng, ptLat, outer)) return false;
+      // if inside any hole -> not inside polygon
+      for (let h = 1; h < polyCoords.length; h++) {
+        if (pointInRing(ptLng, ptLat, polyCoords[h])) return false;
+      }
+      return true;
+    }
+
+    // Geometry: {type:"Polygon"|"MultiPolygon", coordinates: ...}
+    function pointInGeometry(ptLng, ptLat, geom) {
+      if (!geom) return false;
+      if (geom.type === "Polygon") {
+        return pointInPolygonCoords(ptLng, ptLat, geom.coordinates);
+      }
+      if (geom.type === "MultiPolygon") {
+        for (const poly of geom.coordinates) {
+          if (pointInPolygonCoords(ptLng, ptLat, poly)) return true;
+        }
+        return false;
+      }
+      return false;
+    }
+
+    // ---------------------------
+    // Init
+    // ---------------------------
+    async function initMap() {
+      const customerId = getCustomerIdFromPath();
+      const paths = dataPaths(customerId);
+
+      setText("customerLabel", customerId);
+      setText("pathLabel", `/customers/${customerId}/`);
+
+      map = new google.maps.Map(document.getElementById("map"), {
+        mapTypeId: "satellite",
+        center: { lat: -33.798, lng: 115.078 },
+        zoom: 17
+      });
+
+      // Layers
+      boundaryLayer = new google.maps.Data({ map });
+      zonesLayer = new google.maps.Data({ map });
+
+      // UI hooks
+      document.getElementById("z1").addEventListener("change", refreshZoneStyling);
+      document.getElementById("z2").addEventListener("change", refreshZoneStyling);
+      document.getElementById("z3").addEventListener("change", refreshZoneStyling);
+
+      setText("followLabel", "ON");
+      setText("gpsLabel", "OFF");
+      setText("accLabel", "—");
+      setText("zoneLabel", "—");
+
+      // Style boundary
+      boundaryLayer.setStyle({
+        strokeColor: "#00FFFF",
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: "#00FFFF",
+        fillOpacity: 0.08,
+        visible: boundaryVisible
+      });
+
+      // Style zones (function so we can filter + highlight)
+      zonesLayer.setStyle(styleZoneFeature);
+
+      // Click popup for zones
+      zonesLayer.addListener("click", (e) => {
+        const zone = Number(e.feature.getProperty("zone"));
+        const rate = e.feature.getProperty("rate");
+        const unit = e.feature.getProperty("unit");
+        const name = e.feature.getProperty("appName") || "";
+
+        const html = `
+          <strong>${name || "Zone"}</strong><br>
+          <strong>Zone:</strong> ${zone}<br>
+          <strong>Rate:</strong> ${rate} ${unit || ""}
+        `;
+
+        new google.maps.InfoWindow({ content: html, position: e.latLng }).open(map);
+      });
+
+      try {
+        // Load boundary GeoJSON
+        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundaryUrl);
+
+        // Load zones GeoJSON
+        await loadGeoJsonIntoLayer(zonesLayer, paths.rxUrl);
+
+        // Compute bounds
+        boundaryBounds = computeBoundsForLayer(boundaryLayer);
+        zonesBounds = computeBoundsForLayer(zonesLayer);
+
+        if (boundaryBounds) map.fitBounds(boundaryBounds);
+        else if (zonesBounds) map.fitBounds(zonesBounds);
+
+        // Build zone geometry cache for GPS
+        rebuildZoneGeomCache();
+
+        refreshZoneStyling();
+      } catch (err) {
+        console.error(err);
+        alert(
+          `Failed to load data for customer "${customerId}".\n\n` +
+          `Expected:\n${paths.boundaryUrl}\n${paths.rxUrl}\n\n` +
+          `Check folder names and that the files exist in the repo.`
+        );
+      }
+    }
+
+    function loadGeoJsonIntoLayer(layer, url) {
+      return new Promise((resolve, reject) => {
+        layer.loadGeoJson(url, { idPropertyName: "id" }, (features) => {
+          if (!features || features.length === 0) {
+            // GeoJSON can omit feature ids; that's fine
+            // but if it truly loaded nothing, flag it
+            console.warn("No features loaded from:", url);
+          }
+          resolve();
+        });
+        // loadGeoJson doesn't provide error callback; fetch to detect 404 quickly
+        fetch(url, { cache: "no-store" })
+          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`); })
+          .catch(reject);
+      });
+    }
+
+    function rebuildZoneGeomCache() {
+      zoneGeoms = [];
+      zonesLayer.forEach(feature => {
+        const zone = Number(feature.getProperty("zone"));
+        const rate = feature.getProperty("rate");
+        const unit = feature.getProperty("unit");
+
+        // Extract GeoJSON geometry from the Data.Geometry (we’ll approximate by using the original URL fetch would be heavy)
+        // Instead, we’ll reconstruct an equivalent GeoJSON from google.maps.Data geometry:
+        const geo = geometryToGeoJson(feature.getGeometry());
+        zoneGeoms.push({ feature, zone, rate, unit, geo });
+      });
+    }
+
+    function geometryToGeoJson(geom) {
+      // Converts google.maps.Data.Geometry to GeoJSON-like Polygon/MultiPolygon.
+      // Handles Polygon and MultiPolygon (most common from QGIS export).
+      if (!geom) return null;
+
+      const t = geom.getType();
+
+      if (t === "Polygon") {
+        // Polygon -> array of LinearRings
+        const rings = [];
+        geom.getArray().forEach(linearRing => {
+          const ring = [];
+          linearRing.getArray().forEach(ll => ring.push([ll.lng(), ll.lat()]));
+          rings.push(ring);
+        });
+        return { type: "Polygon", coordinates: rings };
+      }
+
+      if (t === "MultiPolygon") {
+        const polys = [];
+        geom.getArray().forEach(poly => {
+          const rings = [];
+          poly.getArray().forEach(linearRing => {
+            const ring = [];
+            linearRing.getArray().forEach(ll => ring.push([ll.lng(), ll.lat()]));
+            rings.push(ring);
+          });
+          polys.push(rings);
+        });
+        return { type: "MultiPolygon", coordinates: polys };
+      }
+
+      // Fallback: try to treat LineString/Point etc (not expected here)
+      return null;
+    }
+
+    function styleZoneFeature(feature) {
+      const zone = Number(feature.getProperty("zone"));
+      const visible = zonesVisible && zoneEnabled(zone);
+
+      // Highlight if this is the selected one
+      const fid = feature.getId();
+      const isHighlighted = (fid != null && fid === highlightedFeatureId);
+
+      return {
+        fillColor: zoneToColor(zone),
+        fillOpacity: isHighlighted ? 0.75 : 0.55,
+        strokeColor: isHighlighted ? "#00BFFF" : "#000000",
+        strokeOpacity: isHighlighted ? 1.0 : 0.6,
+        strokeWeight: isHighlighted ? 2.5 : 0.6,
+        visible
+      };
+    }
+
+    function refreshZoneStyling() {
+      zonesLayer.setStyle(styleZoneFeature);
+
+      // If GPS is on, re-evaluate current highlight if it became invisible
+      if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
+    }
+
+    // ---------------------------
+    // Controls
+    // ---------------------------
+    function toggleBoundary() {
+      boundaryVisible = !boundaryVisible;
+      boundaryLayer.setStyle({
+        strokeColor: "#00FFFF",
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: "#00FFFF",
+        fillOpacity: 0.08,
+        visible: boundaryVisible
+      });
+    }
+
+    function toggleZones() {
+      zonesVisible = !zonesVisible;
+      refreshZoneStyling();
+    }
+
+    function fitToBoundary() {
+      if (boundaryBounds) map.fitBounds(boundaryBounds);
+      else alert("Boundary bounds not available.");
+    }
+
+    function fitToZones() {
+      if (zonesBounds) map.fitBounds(zonesBounds);
+      else alert("Zones bounds not available.");
+    }
+
+    function toggleFollow() {
+      followMode = !followMode;
+      setText("followLabel", followMode ? "ON" : "OFF");
+    }
+
+    // ---------------------------
+    // GPS Walking mode
+    // ---------------------------
+    function startGPS() {
+      if (!navigator.geolocation) {
+        alert("Geolocation not supported by this browser.");
+        return;
+      }
+      if (gpsWatchId != null) return;
+
+      setText("gpsLabel", "ON");
+
+      gpsWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const acc = pos.coords.accuracy;
+          setText("accLabel", `${Math.round(acc)}m`);
+
+          const ll = new google.maps.LatLng(lat, lng);
+
+          if (!gpsMarker) {
+            gpsMarker = new google.maps.Marker({ position: ll, map, title: "You" });
+          } else {
+            gpsMarker.setPosition(ll);
+          }
+
+          if (!gpsAccuracyCircle) {
+            gpsAccuracyCircle = new google.maps.Circle({
+              map,
+              center: ll,
+              radius: acc,
+              strokeOpacity: 0.4,
+              strokeWeight: 1,
+              fillOpacity: 0.12
+            });
+          } else {
+            gpsAccuracyCircle.setCenter(ll);
+            gpsAccuracyCircle.setRadius(acc);
+          }
+
+          if (followMode) map.panTo(ll);
+
+          highlightZoneAt(ll);
+        },
+        (err) => {
+          console.error("GPS error:", err);
+          setText("gpsLabel", "ERROR");
+          alert("GPS error: " + err.message);
+        },
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+      );
+    }
+
+    function stopGPS() {
+      if (gpsWatchId != null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+      }
+      setText("gpsLabel", "OFF");
+      setText("accLabel", "—");
+      setText("zoneLabel", "—");
+
+      if (gpsMarker) { gpsMarker.setMap(null); gpsMarker = null; }
+      if (gpsAccuracyCircle) { gpsAccuracyCircle.setMap(null); gpsAccuracyCircle = null; }
+
+      highlightedFeatureId = null;
+      refreshZoneStyling();
+    }
+
+    function highlightZoneAt(latLng) {
+      const ptLng = latLng.lng();
+      const ptLat = latLng.lat();
+
+      let found = null;
+
+      // Find the first zone containing the point, considering filters
+      for (const z of zoneGeoms) {
+        if (!zonesVisible) continue;
+        if (!zoneEnabled(z.zone)) continue;
+        if (!z.geo) continue;
+
+        if (pointInGeometry(ptLng, ptLat, z.geo)) {
+          found = z;
+          break;
+        }
+      }
+
+      if (found) {
+        // Feature ids might be null if GeoJSON doesn't include id; assign a fallback
+        let fid = found.feature.getId();
+        if (fid == null) {
+          // Use zone as a stable fallback id (works if one polygon per zone)
+          fid = `zone-${found.zone}`;
+          found.feature.setId(fid);
+        }
+
+        if (highlightedFeatureId !== fid) {
+          highlightedFeatureId = fid;
+          refreshZoneStyling();
+        }
+
+        setText("zoneLabel", `Zone ${found.zone} • ${found.rate} ${found.unit || ""}`.trim());
+      } else {
+        if (highlightedFeatureId != null) {
+          highlightedFeatureId = null;
+          refreshZoneStyling();
+        }
+        setText("zoneLabel", "Outside zones");
+      }
+    }
+  </script>
+</body>
+</html>
