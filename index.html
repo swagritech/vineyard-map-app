@@ -66,9 +66,9 @@
     <div class="row">
       <strong>Zone filters</strong>
       <div class="checkRow">
-        <label><input type="checkbox" id="z1" checked> Zone 1</label>
-        <label><input type="checkbox" id="z2" checked> Zone 2</label>
-        <label><input type="checkbox" id="z3" checked> Zone 3</label>
+        <label><input type="checkbox" id="z1" checked> Red</label>
+        <label><input type="checkbox" id="z2" checked> Orange</label>
+        <label><input type="checkbox" id="z3" checked> Green</label>
       </div>
     </div>
 
@@ -155,7 +155,7 @@
     let followMode = true;
 
     // Zone hit-testing cache
-    let zoneGeoms = []; // { zone, rate, unit, geo }
+    let zoneGeoms = []; // { zone, geo }
     let highlightedZone = null;
 
     // ---------------------------
@@ -178,19 +178,25 @@
       return true;
     }
 
+    // NEW: display names
+    function zoneNameFromNumber(z) {
+      if (z === 1) return "Red zone";
+      if (z === 2) return "Orange zone";
+      if (z === 3) return "Green zone";
+      return `Zone ${z}`;
+    }
+
     // ---------------------------
-    // GeoJSON loading (IMPORTANT FIX)
+    // GeoJSON loading (awaitable)
     // ---------------------------
     function loadGeoJsonIntoLayer(layer, url) {
       return new Promise((resolve, reject) => {
-        // First fetch so we get real HTTP errors (404 etc.)
         fetch(url, { cache: "no-store" })
           .then(r => {
             if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
             return r.json(); // validate JSON
           })
           .then(() => {
-            // Now let Google Maps Data layer load it
             layer.loadGeoJson(url, null, () => resolve());
           })
           .catch(reject);
@@ -208,7 +214,6 @@
       return any ? b : null;
     }
 
-    // Convert Google Data geometry to GeoJSON-like for point-in-polygon tests
     function geometryToGeoJson(g) {
       if (!g) return null;
       const t = g.getType();
@@ -254,8 +259,7 @@
 
     function pointInPolygon(x, y, rings) {
       if (!rings || rings.length === 0) return false;
-      if (!pointInRing(x, y, rings[0])) return false; // outside outer ring
-      // holes
+      if (!pointInRing(x, y, rings[0])) return false;
       for (let h = 1; h < rings.length; h++) {
         if (pointInRing(x, y, rings[h])) return false;
       }
@@ -275,14 +279,13 @@
     function styleZones(feature) {
       const z = Number(feature.getProperty("zone"));
       const enabled = zoneEnabled(z);
-
       const isHighlighted = (highlightedZone != null && z === highlightedZone);
 
       return {
         visible: enabled,
         fillColor: zoneToColor(z),
         fillOpacity: isHighlighted ? 0.75 : 0.55,
-        strokeColor: isHighlighted ? "#00bfff" : "#000000",
+        strokeColor: isHighlighted ? "#1a73e8" : "#000000",
         strokeOpacity: isHighlighted ? 1.0 : 0.6,
         strokeWeight: isHighlighted ? 2.5 : 0.6
       };
@@ -290,7 +293,7 @@
 
     function refreshZones() {
       zonesLayer.setStyle(styleZones);
-      if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
+      // don't call highlightZoneAt() here to avoid recursion; highlightZoneAt calls refreshZones
     }
 
     // ---------------------------
@@ -299,6 +302,7 @@
     async function initMap() {
       customerId = getCustomerIdFromPath();
       $("customerLabel").textContent = customerId;
+
       $("followLabel").textContent = "ON";
       $("gpsLabel").textContent = "OFF";
       $("accLabel").textContent = "—";
@@ -322,8 +326,10 @@
 
       zonesLayer.setStyle(styleZones);
 
-      // Filter listeners
-      ["z1","z2","z3"].forEach(id => $(id).addEventListener("change", refreshZones));
+      ["z1","z2","z3"].forEach(id => $(id).addEventListener("change", () => {
+        refreshZones();
+        if (gpsMarker) highlightZoneAt(gpsMarker.getPosition());
+      }));
 
       // Load blocks list
       setStatus("Loading blocks…");
@@ -338,7 +344,6 @@
 
       populateBlocksDropdown(blocksConfig);
 
-      // Initial block selection
       const qBlock = getQueryParam("block");
       const defaultBlock = blocksConfig.defaultBlock || (blocksConfig.blocks?.[0]?.id);
       const initial = (qBlock && hasBlock(qBlock)) ? qBlock : defaultBlock;
@@ -386,7 +391,6 @@
       $("blockLabel").textContent = currentBlockId;
       setQueryParam("block", currentBlockId);
 
-      // Keep dropdown in sync
       const sel = $("blockSelect");
       if (sel.value !== currentBlockId) sel.value = currentBlockId;
 
@@ -401,24 +405,19 @@
       setStatus("Loading block data…");
 
       try {
-        // IMPORTANT: these wait until data is actually loaded (prevents “ocean”)
         await loadGeoJsonIntoLayer(boundaryLayer, paths.boundary);
         await loadGeoJsonIntoLayer(zonesLayer, paths.rx);
 
-        // Fit bounds (prefer boundary; fallback zones)
         const b1 = computeLayerBounds(boundaryLayer);
         const b2 = computeLayerBounds(zonesLayer);
         const bounds = b1 || b2;
-
         if (bounds) map.fitBounds(bounds);
 
-        // Build hit-test cache
+        // Build hit-test cache (only needs zone number + geometry)
         zonesLayer.forEach(f => {
           const z = Number(f.getProperty("zone"));
-          const r = f.getProperty("rate");
-          const u = f.getProperty("unit");
           const geo = geometryToGeoJson(f.getGeometry());
-          zoneGeoms.push({ zone: z, rate: r, unit: u, geo });
+          zoneGeoms.push({ zone: z, geo });
         });
 
         refreshZones();
@@ -458,16 +457,37 @@
           const ll = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
           $("accLabel").textContent = `${Math.round(pos.coords.accuracy)}m`;
 
-          if (!gpsMarker) gpsMarker = new google.maps.Marker({ map, position: ll, title: "You" });
-          else gpsMarker.setPosition(ll);
+          // NEW: Blue dot (circle with white ring)
+          if (!gpsMarker) {
+            gpsMarker = new google.maps.Marker({
+              map,
+              position: ll,
+              title: "You",
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: "#1a73e8",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeOpacity: 1,
+                strokeWeight: 3
+              },
+              zIndex: 9999
+            });
+          } else {
+            gpsMarker.setPosition(ll);
+          }
 
+          // Accuracy circle (blue)
           if (!gpsCircle) {
             gpsCircle = new google.maps.Circle({
               map,
               center: ll,
               radius: pos.coords.accuracy,
-              strokeOpacity: 0.4,
+              strokeColor: "#1a73e8",
+              strokeOpacity: 0.35,
               strokeWeight: 1,
+              fillColor: "#1a73e8",
               fillOpacity: 0.12
             });
           } else {
@@ -501,19 +521,20 @@
       if (gpsCircle) { gpsCircle.setMap(null); gpsCircle = null; }
     }
 
+    // NEW: Uses zoneNameFromNumber() and no rate/unit output
     function highlightZoneAt(latLng) {
       const x = latLng.lng();
       const y = latLng.lat();
 
-      let found = null;
+      let foundZone = null;
       for (const z of zoneGeoms) {
         if (!zoneEnabled(z.zone)) continue;
-        if (pointInGeom(x, y, z.geo)) { found = z; break; }
+        if (pointInGeom(x, y, z.geo)) { foundZone = z.zone; break; }
       }
 
-      if (found) {
-        highlightedZone = found.zone;
-        $("zoneLabel").textContent = `Zone ${found.zone} • ${found.rate} ${found.unit || ""}`.trim();
+      if (foundZone != null) {
+        highlightedZone = foundZone;
+        $("zoneLabel").textContent = zoneNameFromNumber(foundZone);
       } else {
         highlightedZone = null;
         $("zoneLabel").textContent = "Outside zones";
