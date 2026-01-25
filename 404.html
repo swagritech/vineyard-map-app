@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; }
-    #map { height: 100vh; width: 100%; }
+    body { margin: 0; font-family: Arial, sans-serif; background: #f7f7f7; }
+    #map { height: 100vh; width: 100%; display:none; }
 
     .controls {
       position: absolute;
@@ -24,22 +24,24 @@
       padding: 10px;
       border-radius: 10px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-      z-index: 1;
+      z-index: 10;
       min-width: 320px;
       user-select: none;
+      display:none;
     }
 
     .row { margin-top: 8px; }
     .btnRow { display: flex; gap: 6px; flex-wrap: wrap; }
-    button { flex: 1; padding: 7px 8px; cursor: pointer; }
-    select { width: 100%; padding: 6px; }
+    button { flex: 1; padding: 8px 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
+    button:hover { background: #f5f5f5; }
+    select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 10px; }
 
     .small { font-size: 12px; color: #555; line-height: 1.25; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
 
     .pill {
       display:inline-block;
-      padding: 2px 10px;
+      padding: 3px 10px;
       border-radius: 999px;
       background: #eee;
       font-size: 12px;
@@ -49,7 +51,44 @@
 
     .checkRow { display:flex; gap:10px; flex-wrap:wrap; }
     .checkRow label { font-size: 12px; display:flex; align-items:center; gap:6px; }
+
     hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
+
+    /* Landing */
+    #landing {
+      display:none;
+      padding: 18px;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e6e6e6;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      margin-top: 14px;
+    }
+    .warn {
+      background: #fff3cd;
+      border: 1px solid #ffe69c;
+      border-radius: 14px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .ok {
+      background: #e8f5e9;
+      border: 1px solid #c8e6c9;
+      border-radius: 14px;
+      padding: 12px;
+      margin-top: 12px;
+      display:none;
+    }
+    .landingTitle {
+      margin: 0 0 8px 0;
+      font-size: 22px;
+    }
+    code { background: #f2f2f2; padding: 2px 6px; border-radius: 8px; }
   </style>
 
   <script
@@ -58,6 +97,59 @@
 </head>
 
 <body>
+
+  <!-- Landing / Instructions -->
+  <div id="landing">
+    <h1 class="landingTitle">Vineyard Maps</h1>
+    <div class="small">
+      This tool is used to walk vineyards with zone overlays and live GPS.
+    </div>
+
+    <div id="landingError" class="warn" style="display:none;">
+      <strong>We couldn’t find that vineyard.</strong><br>
+      <span class="small">Path entered: <span id="badPathText" class="mono"></span></span>
+    </div>
+
+    <div class="card">
+      <strong>Open your vineyard</strong>
+      <p class="small" style="margin-top:8px;">
+        Use the link provided by Southwest Agri-Tech, for example:
+      </p>
+      <ul class="small">
+        <li><code>https://maps.swagritech.com.au/Menzies/</code></li>
+        <li><code>https://maps.swagritech.com.au/Menzies/?block=1</code></li>
+      </ul>
+    </div>
+
+    <!-- Optional upgrade: Find my vineyard -->
+    <div class="card">
+      <strong>Find my vineyard</strong>
+      <p class="small" style="margin-top:8px;">
+        If you know your vineyard/customer name, enter it below (e.g. <code>Menzies</code>) and tap Find.
+      </p>
+      <input id="vineyardInput" type="text" placeholder="Enter vineyard/customer name (e.g. Menzies)" />
+      <div class="btnRow row">
+        <button id="findBtn" type="button">Find</button>
+        <button id="exampleBtn" type="button">Use example</button>
+      </div>
+      <div id="findOk" class="ok">
+        <strong>Found!</strong> Redirecting…
+      </div>
+      <div id="findError" class="warn" style="display:none;">
+        <strong>Not found.</strong>
+        <div class="small" id="findErrorText" style="margin-top:6px;"></div>
+      </div>
+      <div class="small" style="margin-top:10px;">
+        If you don’t have a link or name, contact Southwest Agri-Tech and we’ll send it through.
+      </div>
+    </div>
+
+    <div class="small" style="margin-top:14px; color:#666;">
+      © Southwest Agri-Tech
+    </div>
+  </div>
+
+  <!-- Map UI -->
   <div class="controls">
     <strong>SwagriTech Vineyard Maps</strong>
 
@@ -101,22 +193,27 @@
 
   <script>
     // ---------------------------
-    // Config
+    // Performance config
     // ---------------------------
-    const DEFAULT_CUSTOMER = "Menzies";
-
-    // Throttle GPS processing (ms). Lower = more responsive, higher = less CPU.
     const GPS_PROCESS_THROTTLE_MS = 300;
 
     // ---------------------------
-    // Routing helpers
+    // Helpers
     // ---------------------------
-    function getCustomerIdFromPath() {
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (t) => ($("statusLabel").textContent = t);
+
+    // ---------------------------
+    // Routing: customerId
+    // ---------------------------
+    function getCustomerIdFromPathOrNull() {
       const trimmed = location.pathname.replace(/^\/+|\/+$/g, "");
-      if (!trimmed) return DEFAULT_CUSTOMER;
+      if (!trimmed) return null;
+
       const first = decodeURIComponent(trimmed.split("/")[0]);
       const reserved = ["customers", "icons", "favicon.ico", "manifest.webmanifest", "service-worker.js"];
-      if (reserved.includes(first.toLowerCase())) return DEFAULT_CUSTOMER;
+      if (reserved.includes(first.toLowerCase())) return null;
+
       return first;
     }
 
@@ -138,7 +235,6 @@
       return `/customers/${encodeURIComponent(customer)}/blocks.json`;
     }
 
-    // Your naming format:
     // boundary: block<NUM>boundary.geojson
     // rx:       block<NUM>rx.geojson
     function blockDataPaths(customer, blockId) {
@@ -151,7 +247,86 @@
     }
 
     // ---------------------------
-    // Globals
+    // Landing view
+    // ---------------------------
+    function showLanding(badPath = null) {
+      $("map").style.display = "none";
+      document.querySelector(".controls").style.display = "none";
+      $("landing").style.display = "block";
+
+      const errBox = $("landingError");
+      const badText = $("badPathText");
+      if (badPath) {
+        errBox.style.display = "block";
+        badText.textContent = badPath;
+      } else {
+        errBox.style.display = "none";
+        badText.textContent = "";
+      }
+    }
+
+    function showApp() {
+      $("landing").style.display = "none";
+      $("map").style.display = "block";
+      document.querySelector(".controls").style.display = "block";
+    }
+
+    // Optional upgrade: "Find my vineyard"
+    function setupLandingFindBox() {
+      const input = $("vineyardInput");
+      const findBtn = $("findBtn");
+      const exampleBtn = $("exampleBtn");
+      const okBox = $("findOk");
+      const errBox = $("findError");
+      const errText = $("findErrorText");
+
+      function normalizeName(s) {
+        return (s || "").trim().replace(/^\/+|\/+$/g, "");
+      }
+
+      async function tryFind() {
+        const name = normalizeName(input.value);
+        okBox.style.display = "none";
+        errBox.style.display = "none";
+        errText.textContent = "";
+
+        if (!name) {
+          errBox.style.display = "block";
+          errText.textContent = "Please enter a vineyard/customer name (e.g. Menzies).";
+          return;
+        }
+
+        const url = blocksIndexUrl(name);
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          // Validate JSON
+          await r.json();
+
+          okBox.style.display = "block";
+          // Redirect to /<name>/ (keeps it clean)
+          setTimeout(() => {
+            location.href = `/${encodeURIComponent(name)}/`;
+          }, 450);
+        } catch (e) {
+          errBox.style.display = "block";
+          errText.textContent = `We couldn't find "${name}". Make sure it's spelled exactly as provided, or contact Southwest Agri-Tech.`;
+        }
+      }
+
+      findBtn.addEventListener("click", tryFind);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") tryFind();
+      });
+
+      exampleBtn.addEventListener("click", () => {
+        input.value = "Menzies";
+        tryFind();
+      });
+    }
+
+    // ---------------------------
+    // Map + data state
     // ---------------------------
     let map;
     let boundaryLayer, zonesLayer;
@@ -165,21 +340,15 @@
     let gpsMarker = null;
     let gpsCircle = null;
     let followMode = true;
-
-    // Throttle helpers
     let lastGpsProcessAt = 0;
 
-    // Zone hit-testing cache
-    // Keep only what we need for fast hit-testing.
-    let zoneGeoms = []; // { zone, geo }
+    // Zone hit-test cache
+    let zoneGeoms = [];   // { zone, geo }
     let highlightedZone = null;
 
     // ---------------------------
-    // UI helpers
+    // Zone helpers
     // ---------------------------
-    const $ = (id) => document.getElementById(id);
-    const setStatus = (t) => ($("statusLabel").textContent = t);
-
     function zoneToColor(z) {
       if (z === 1) return "#ff0000";
       if (z === 2) return "#ffa500";
@@ -201,7 +370,6 @@
       return `Zone ${z}`;
     }
 
-    // NEW: colour the "You are in" pill
     function setZonePill(zoneNum) {
       const pill = $("zoneLabel");
 
@@ -338,12 +506,34 @@
     }
 
     // ---------------------------
-    // Init
+    // Map init entrypoint (called by Google Maps callback)
     // ---------------------------
     async function initMap() {
-      customerId = getCustomerIdFromPath();
-      $("customerLabel").textContent = customerId;
+      setupLandingFindBox();
 
+      customerId = getCustomerIdFromPathOrNull();
+
+      // If root or reserved path => show instructions page
+      if (!customerId) {
+        showLanding(null);
+        return;
+      }
+
+      // Try to load blocks.json first. If missing => show instructions with error.
+      try {
+        const test = await fetch(blocksIndexUrl(customerId), { cache: "no-store" });
+        if (!test.ok) throw new Error(`HTTP ${test.status}`);
+        await test.json();
+      } catch (e) {
+        console.warn("Unknown customer:", customerId, e);
+        showLanding(location.pathname);
+        return;
+      }
+
+      // Customer is valid, show map UI
+      showApp();
+
+      $("customerLabel").textContent = customerId;
       $("followLabel").textContent = "ON";
       $("gpsLabel").textContent = "OFF";
       $("accLabel").textContent = "—";
@@ -367,7 +557,7 @@
 
       zonesLayer.setStyle(styleZones);
 
-      // Filters: restyle, then re-check current GPS position (but avoid full restyle loops)
+      // Filters: restyle, then re-check current GPS
       ["z1","z2","z3"].forEach(id => $(id).addEventListener("change", () => {
         refreshZones();
         if (gpsMarker) highlightZoneAt(gpsMarker.getPosition(), { forceUpdate: true });
@@ -380,7 +570,7 @@
       } catch (e) {
         console.error(e);
         setStatus("ERROR");
-        alert(`Could not load blocks.json.\n\nExpected:\n${blocksIndexUrl(customerId)}\n\nCheck that file exists and is valid JSON.`);
+        showLanding(location.pathname);
         return;
       }
 
@@ -568,8 +758,7 @@
       if (gpsCircle) { gpsCircle.setMap(null); gpsCircle = null; }
     }
 
-    // KEY PERFORMANCE FIX:
-    // - Only call zonesLayer.setStyle() when the zone actually changes (or forced).
+    // Only restyle polygons when the zone actually changes (performance fix)
     function highlightZoneAt(latLng, { forceUpdate = false } = {}) {
       const x = latLng.lng();
       const y = latLng.lat();
@@ -583,8 +772,7 @@
       const newZone = (foundZone != null) ? foundZone : null;
 
       if (!forceUpdate && newZone === highlightedZone) {
-        // No change → do NOT restyle all polygons again.
-        return;
+        return; // no change => do nothing
       }
 
       highlightedZone = newZone;
@@ -593,7 +781,7 @@
       if (highlightedZone == null) setZonePill(null);
       else setZonePill(highlightedZone);
 
-      // Restyle polygons ONLY when zone changes (or forced)
+      // Restyle zones only when needed
       refreshZones();
     }
   </script>
