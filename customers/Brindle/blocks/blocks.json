@@ -1,0 +1,12 @@
+{
+  "customer": "Brindle",
+  "defaultBlock": "1",
+  "blocks": [
+    { "id": "1", "name": "Block 1" },
+    { "id": "2", "name": "Block 2" },
+    { "id": "3", "name": "Block 3" },
+    { "id": "4", "name": "Block 4" },
+    { "id": "5", "name": "Block 5" },
+    { "id": "6", "name": "Block 6" }
+  ]
+}
