@@ -1,13 +1,41 @@
 {
-  "customer": "Brookland",
-  "defaultBlock": "1",
-  "blocks": [
-    { "id": "1", "name": "Block 1" },
-    { "id": "2", "name": "Block 2" },
-    { "id": "3", "name": "Block 3" },
-    { "id": "4", "name": "Block 4" },
-    { "id": "5", "name": "Block 5" },
-    { "id": "6", "name": "Block 6" },
-    { "id": "7", "name": "Block 7" }
-  ]
+    "customer":  "Brookland",
+    "defaultBlock":  "1",
+    "blocks":  [
+                   {
+                       "id":  "1",
+                       "name":  "B101-102-104-307",
+                       "sourceToken":  "B101-102-104-307"
+                   },
+                   {
+                       "id":  "2",
+                       "name":  "B302",
+                       "sourceToken":  "B302"
+                   },
+                   {
+                       "id":  "3",
+                       "name":  "B305",
+                       "sourceToken":  "B305"
+                   },
+                   {
+                       "id":  "4",
+                       "name":  "B306",
+                       "sourceToken":  "B306"
+                   },
+                   {
+                       "id":  "5",
+                       "name":  "B308-103-801",
+                       "sourceToken":  "B308-103-801"
+                   },
+                   {
+                       "id":  "6",
+                       "name":  "B701",
+                       "sourceToken":  "B701"
+                   },
+                   {
+                       "id":  "7",
+                       "name":  "B702",
+                       "sourceToken":  "B702"
+                   }
+               ]
 }
