@@ -56,6 +56,15 @@
       border-top: 1px solid #eee;
     }
 
+    .controlsMiniActions {
+      display:none;
+      margin-top: 10px;
+    }
+
+    .miniLauncherBtn {
+      width: 100%;
+    }
+
     .controls.is-collapsed {
       min-width: 0;
       max-width: min(92vw, 360px);
@@ -69,6 +78,10 @@
     }
 
     .controls.is-collapsed .controlsStatusMini {
+      display:block;
+    }
+
+    .controls.is-collapsed .controlsMiniActions {
       display:block;
     }
 
@@ -426,6 +439,14 @@
       Status: <span id="statusLabel" class="mono">Loading…</span>
     </div>
 
+    <div class="controlsMiniActions">
+      <button type="button" class="actionBtn ghost miniLauncherBtn" onclick="returnToLauncher()">Back to launcher</button>
+    </div>
+
+    <div class="row">
+      <button type="button" class="actionBtn ghost" onclick="returnToLauncher()">Back to launcher</button>
+    </div>
+
     <div class="row">
       <label class="small"><strong>Select block</strong></label>
       <select id="blockSelect"></select>
@@ -528,6 +549,11 @@
     function buildCustomerUrl(customer, block = null) {
       const base = `/${encodeURIComponent(customer)}/`;
       return block ? `${base}?block=${encodeURIComponent(block)}` : base;
+    }
+
+    function returnToLauncher() {
+      if (gpsWatch) stopGPS();
+      location.href = "/";
     }
 
     function renderLandingResume() {
