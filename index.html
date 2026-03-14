@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SwagriTech Vineyard Maps</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.webmanifest">
@@ -14,7 +17,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; background: #f7f7f7; }
+    body { margin: 0; font-family: "Roboto", Arial, sans-serif; background: #f7f7f7; }
     #map { height: 100vh; width: 100%; display:none; }
 
     .controls {
@@ -143,13 +146,9 @@
       gap:16px;
     }
     .brandLogo {
-      width: 92px;
-      height: 92px;
-      object-fit: contain;
-      border-radius: 20px;
-      background: rgba(255,255,255,0.8);
-      padding: 8px;
-      box-shadow: inset 0 0 0 1px rgba(29,35,28,0.08);
+      width: min(100%, 360px);
+      height: auto;
+      display:block;
       flex-shrink: 0;
     }
     .landingTitle {
@@ -277,10 +276,10 @@
     @media (max-width: 640px) {
       .brandLockup {
         align-items:flex-start;
+        flex-direction: column;
       }
       .brandLogo {
-        width: 76px;
-        height: 76px;
+        width: min(100%, 280px);
       }
       .landingTitle {
         font-size: 28px;
@@ -300,7 +299,7 @@
   <div id="landing">
     <div class="card landingHero">
       <div class="brandLockup">
-        <img class="brandLogo" src="/icons/icon-512.png" alt="Southwest Agri-Tech logo" />
+        <img class="brandLogo" src="/images/SWAT_Logo_CompanyName.png" alt="Southwest Agri-Tech company logo" />
         <div>
           <h1 class="landingTitle">SwagriTech Vineyard Maps</h1>
           <div class="landingLead">
