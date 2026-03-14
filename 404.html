@@ -30,6 +30,45 @@
       display:none;
     }
 
+    .controlsToggle {
+      position:absolute;
+      top:10px;
+      right:10px;
+      min-width: 56px;
+      padding: 8px 12px;
+      font-weight: 700;
+      z-index: 1;
+    }
+
+    .controls > strong:first-of-type {
+      display:block;
+      padding-right: 72px;
+      line-height: 1.2;
+    }
+
+    .controlsStatusMini {
+      display:none;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #eee;
+    }
+
+    .controls.is-collapsed {
+      min-width: 0;
+      max-width: min(92vw, 360px);
+    }
+
+    .controls.is-collapsed .row,
+    .controls.is-collapsed hr,
+    .controls.is-collapsed .btnRow,
+    .controls.is-collapsed > strong:not(:first-of-type) {
+      display:none;
+    }
+
+    .controls.is-collapsed .controlsStatusMini {
+      display:block;
+    }
+
     .row { margin-top: 8px; }
     .btnRow { display: flex; gap: 6px; flex-wrap: wrap; }
     button { flex: 1; padding: 8px 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
@@ -151,7 +190,13 @@
 
   <!-- Map UI -->
   <div class="controls">
+    <button id="panelToggleBtn" type="button" class="controlsToggle" aria-expanded="true" onclick="toggleControlsPanel()">Hide</button>
     <strong>SwagriTech Vineyard Maps</strong>
+    <div class="controlsStatusMini small">
+      Customer: <span id="customerLabelCollapsed" class="mono">â€”</span><br>
+      Block: <span id="blockLabelCollapsed" class="mono">â€”</span><br>
+      Zone: <span id="zoneLabelCollapsed" class="mono">â€”</span>
+    </div>
 
     <div class="row small">
       Customer: <span id="customerLabel" class="mono">—</span><br>
@@ -196,12 +241,37 @@
     // Performance config
     // ---------------------------
     const GPS_PROCESS_THROTTLE_MS = 300;
+    const CONTROLS_COLLAPSED_KEY = "vineyardMapsControlsCollapsed";
 
     // ---------------------------
     // Helpers
     // ---------------------------
     const $ = (id) => document.getElementById(id);
     const setStatus = (t) => ($("statusLabel").textContent = t);
+    const controlsPanel = () => document.querySelector(".controls");
+
+    function syncCollapsedSummary() {
+      $("customerLabelCollapsed").textContent = $("customerLabel").textContent;
+      $("blockLabelCollapsed").textContent = $("blockLabel").textContent;
+      $("zoneLabelCollapsed").textContent = $("zoneLabel").textContent;
+    }
+
+    function setControlsCollapsed(collapsed) {
+      const panel = controlsPanel();
+      const btn = $("panelToggleBtn");
+      if (!panel || !btn) return;
+      panel.classList.toggle("is-collapsed", collapsed);
+      btn.textContent = collapsed ? "Show" : "Hide";
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      localStorage.setItem(CONTROLS_COLLAPSED_KEY, collapsed ? "true" : "false");
+      syncCollapsedSummary();
+    }
+
+    function toggleControlsPanel() {
+      const panel = controlsPanel();
+      if (!panel) return;
+      setControlsCollapsed(!panel.classList.contains("is-collapsed"));
+    }
 
     // ---------------------------
     // Routing: customerId
@@ -269,6 +339,7 @@
       $("landing").style.display = "none";
       $("map").style.display = "block";
       document.querySelector(".controls").style.display = "block";
+      setControlsCollapsed(localStorage.getItem(CONTROLS_COLLAPSED_KEY) === "true");
     }
 
     // Optional upgrade: "Find my vineyard"
@@ -394,6 +465,7 @@
         pill.style.background = "#eee";
         pill.style.color = "#111";
       }
+      syncCollapsedSummary();
     }
 
     // ---------------------------
@@ -534,6 +606,7 @@
       showApp();
 
       $("customerLabel").textContent = customerId;
+      syncCollapsedSummary();
       $("followLabel").textContent = "ON";
       $("gpsLabel").textContent = "OFF";
       $("accLabel").textContent = "—";
@@ -621,6 +694,7 @@
     async function loadBlock(blockId) {
       currentBlockId = String(blockId);
       $("blockLabel").textContent = currentBlockId;
+      syncCollapsedSummary();
       setQueryParam("block", currentBlockId);
 
       const sel = $("blockSelect");
