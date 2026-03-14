@@ -100,80 +100,191 @@
       max-width: 820px;
       margin: 0 auto;
     }
+    :root {
+      --swat-green: #40914C;
+      --swat-ink: #1D231C;
+      --swat-sand: #E1DFD9;
+      --swat-paper: #F7F4EE;
+      --swat-border: rgba(29,35,28,0.12);
+    }
     .card {
-      background: #fff;
-      border: 1px solid #e6e6e6;
-      border-radius: 16px;
-      padding: 16px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-      margin-top: 14px;
+      background: rgba(247,244,238,0.94);
+      border: 1px solid var(--swat-border);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: 0 16px 34px rgba(29,35,28,0.09);
+      margin-top: 16px;
+      backdrop-filter: blur(8px);
     }
     .warn {
       background: #fff3cd;
       border: 1px solid #ffe69c;
-      border-radius: 14px;
+      border-radius: 16px;
       padding: 12px;
       margin-top: 12px;
     }
     .ok {
       background: #e8f5e9;
       border: 1px solid #c8e6c9;
-      border-radius: 14px;
+      border-radius: 16px;
       padding: 12px;
       margin-top: 12px;
       display:none;
     }
+    .landingHero {
+      background:
+        radial-gradient(circle at top left, rgba(64,145,76,0.18), transparent 38%),
+        linear-gradient(145deg, rgba(247,244,238,0.98) 0%, rgba(225,223,217,0.92) 100%);
+      border: 1px solid rgba(64,145,76,0.22);
+    }
+    .brandLockup {
+      display:flex;
+      align-items:center;
+      gap:16px;
+    }
+    .brandLogo {
+      width: 92px;
+      height: 92px;
+      object-fit: contain;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.8);
+      padding: 8px;
+      box-shadow: inset 0 0 0 1px rgba(29,35,28,0.08);
+      flex-shrink: 0;
+    }
     .landingTitle {
-      margin: 0 0 8px 0;
-      font-size: 22px;
+      margin: 0;
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 0.98;
+      color: var(--swat-ink);
+      letter-spacing: -0.04em;
     }
     .landingLead {
       font-size: 14px;
-      color: #555;
-      line-height: 1.4;
-      margin-top: 8px;
+      color: rgba(29,35,28,0.78);
+      line-height: 1.5;
+      margin-top: 10px;
+      max-width: 34rem;
+    }
+    .heroLinks {
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top: 16px;
+    }
+    .heroLink {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 700;
+      border: 1px solid rgba(29,35,28,0.12);
+      color: var(--swat-ink);
+      background: rgba(255,255,255,0.72);
+    }
+    .heroLink.primary {
+      background: var(--swat-green);
+      color: #fff;
+      border-color: var(--swat-green);
     }
     .heroCard {
-      background: linear-gradient(135deg, #f7fbf6 0%, #eef5ee 100%);
-      border-color: #d8e7d8;
+      background: linear-gradient(135deg, rgba(64,145,76,0.14) 0%, rgba(247,244,238,0.96) 100%);
+      border-color: rgba(64,145,76,0.2);
     }
     .cardTitle {
       margin: 0;
       font-size: 18px;
       font-weight: 700;
+      color: var(--swat-ink);
+    }
+    .cardText {
+      font-size: 13px;
+      color: rgba(29,35,28,0.72);
+      line-height: 1.45;
+      margin-top: 8px;
     }
     .actionBtn {
-      min-height: 46px;
-      border-radius: 12px;
+      min-height: 48px;
+      border-radius: 14px;
       font-weight: 700;
     }
     .actionBtn.primary {
-      background: #1d231c;
+      background: var(--swat-green);
       color: #fff;
-      border-color: #1d231c;
+      border-color: var(--swat-green);
     }
     .actionBtn.primary:hover {
-      background: #2a3328;
+      background: #34763d;
     }
     .actionBtn.secondary {
-      background: #fff;
-      color: #1d231c;
+      background: var(--swat-ink);
+      color: #fff;
+      border-color: var(--swat-ink);
+    }
+    .actionBtn.ghost {
+      background: rgba(255,255,255,0.72);
+      color: var(--swat-ink);
+      border-color: rgba(29,35,28,0.12);
     }
     .resumeMeta {
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid #d8e7d8;
-      background: rgba(255,255,255,0.8);
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(64,145,76,0.18);
+      background: rgba(255,255,255,0.82);
     }
     .linkBtn {
       appearance: none;
       border: none;
       background: none;
-      color: #1a73e8;
+      color: var(--swat-green);
       font-weight: 700;
       padding: 0;
       cursor: pointer;
+    }
+    .installDetails {
+      margin-top: 12px;
+      border: 1px solid rgba(29,35,28,0.1);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.72);
+      overflow: hidden;
+    }
+    .installDetails summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 14px 16px;
+      font-weight: 700;
+      color: var(--swat-ink);
+    }
+    .installDetails summary::-webkit-details-marker {
+      display:none;
+    }
+    .installBody {
+      padding: 0 16px 16px;
+    }
+    .installBody ol {
+      margin: 8px 0 0 18px;
+      padding: 0;
+      color: rgba(29,35,28,0.78);
+    }
+    .installBody li + li {
+      margin-top: 6px;
+    }
+    @media (max-width: 640px) {
+      .brandLockup {
+        align-items:flex-start;
+      }
+      .brandLogo {
+        width: 76px;
+        height: 76px;
+      }
+      .landingTitle {
+        font-size: 28px;
+      }
     }
     code { background: #f2f2f2; padding: 2px 6px; border-radius: 8px; }
   </style>
@@ -187,9 +298,21 @@
 
   <!-- Landing / Instructions -->
   <div id="landing">
-    <h1 class="landingTitle">Vineyard Maps</h1>
-    <div class="landingLead">
-      Open your saved field map quickly, or switch to another customer when needed.
+    <div class="card landingHero">
+      <div class="brandLockup">
+        <img class="brandLogo" src="/icons/icon-512.png" alt="Southwest Agri-Tech logo" />
+        <div>
+          <h1 class="landingTitle">SwagriTech Vineyard Maps</h1>
+          <div class="landingLead">
+            A fast field launcher for vineyard maps, walking guidance, and live GPS zone lookup.
+          </div>
+        </div>
+      </div>
+      <div class="heroLinks">
+        <a class="heroLink primary" href="#resumeCard">Open saved map</a>
+        <a class="heroLink" href="#manualAccess">Change customer</a>
+        <a class="heroLink" href="#installHelp">Install on phone</a>
+      </div>
     </div>
 
     <div id="landingError" class="warn" style="display:none;">
@@ -199,7 +322,7 @@
 
     <div id="resumeCard" class="card heroCard" style="display:none;">
       <p class="cardTitle">Continue where you left off</p>
-      <div class="small" style="margin-top:8px;">
+      <div class="cardText">
         This device remembers the last successful customer and block you opened.
       </div>
       <div class="resumeMeta">
@@ -208,7 +331,7 @@
       </div>
       <div class="btnRow row">
         <button id="resumeBtn" type="button" class="actionBtn primary">Continue to map</button>
-        <button id="switchCustomerBtn" type="button" class="actionBtn secondary">Change customer</button>
+        <button id="switchCustomerBtn" type="button" class="actionBtn ghost">Change customer</button>
       </div>
       <div class="small" style="margin-top:10px;">
         Need to clear this device? <button id="clearSavedBtn" type="button" class="linkBtn">Forget saved customer</button>
@@ -217,7 +340,7 @@
 
     <div class="card">
       <p class="cardTitle">Open with your customer link or QR</p>
-      <p class="small" style="margin-top:8px;">
+      <p class="cardText">
         This is the fastest way to set up the PWA for a customer. Once opened successfully, the app will remember that customer on this device.
       </p>
       <ul class="small">
@@ -226,9 +349,9 @@
       </ul>
     </div>
 
-    <div class="card">
+    <div id="manualAccess" class="card">
       <p class="cardTitle">First time on this device or changing customer</p>
-      <p class="small" style="margin-top:8px;">
+      <p class="cardText">
         Enter the customer name exactly as provided by Southwest Agri-Tech.
       </p>
       <input id="vineyardInput" type="text" placeholder="Enter vineyard/customer name (e.g. Menzies)" />
@@ -245,6 +368,37 @@
       <div class="small" style="margin-top:10px;">
         If you don’t have a link or name, contact Southwest Agri-Tech and we’ll send it through.
       </div>
+    </div>
+
+    <div id="installHelp" class="card">
+      <p class="cardTitle">Install this app on your phone</p>
+      <p class="cardText">
+        Install once for faster field access. After installation, open the app from your home screen and use the saved map shortcut above.
+      </p>
+
+      <details class="installDetails">
+        <summary>iPhone / iPad installation</summary>
+        <div class="installBody">
+          <ol>
+            <li>Open this page in Safari.</li>
+            <li>Tap the Share button.</li>
+            <li>Select <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong> to install the app.</li>
+          </ol>
+        </div>
+      </details>
+
+      <details class="installDetails">
+        <summary>Android installation</summary>
+        <div class="installBody">
+          <ol>
+            <li>Open this page in Chrome.</li>
+            <li>Tap the browser menu.</li>
+            <li>Select <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+            <li>Confirm the install prompt.</li>
+          </ol>
+        </div>
+      </details>
     </div>
 
     <div class="small" style="margin-top:14px; color:#666;">
