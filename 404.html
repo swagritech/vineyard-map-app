@@ -127,6 +127,54 @@
       margin: 0 0 8px 0;
       font-size: 22px;
     }
+    .landingLead {
+      font-size: 14px;
+      color: #555;
+      line-height: 1.4;
+      margin-top: 8px;
+    }
+    .heroCard {
+      background: linear-gradient(135deg, #f7fbf6 0%, #eef5ee 100%);
+      border-color: #d8e7d8;
+    }
+    .cardTitle {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .actionBtn {
+      min-height: 46px;
+      border-radius: 12px;
+      font-weight: 700;
+    }
+    .actionBtn.primary {
+      background: #1d231c;
+      color: #fff;
+      border-color: #1d231c;
+    }
+    .actionBtn.primary:hover {
+      background: #2a3328;
+    }
+    .actionBtn.secondary {
+      background: #fff;
+      color: #1d231c;
+    }
+    .resumeMeta {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #d8e7d8;
+      background: rgba(255,255,255,0.8);
+    }
+    .linkBtn {
+      appearance: none;
+      border: none;
+      background: none;
+      color: #1a73e8;
+      font-weight: 700;
+      padding: 0;
+      cursor: pointer;
+    }
     code { background: #f2f2f2; padding: 2px 6px; border-radius: 8px; }
   </style>
 
@@ -140,8 +188,8 @@
   <!-- Landing / Instructions -->
   <div id="landing">
     <h1 class="landingTitle">Vineyard Maps</h1>
-    <div class="small">
-      This tool is used to walk vineyards with zone overlays and live GPS.
+    <div class="landingLead">
+      Open your saved field map quickly, or switch to another customer when needed.
     </div>
 
     <div id="landingError" class="warn" style="display:none;">
@@ -149,10 +197,28 @@
       <span class="small">Path entered: <span id="badPathText" class="mono"></span></span>
     </div>
 
+    <div id="resumeCard" class="card heroCard" style="display:none;">
+      <p class="cardTitle">Continue where you left off</p>
+      <div class="small" style="margin-top:8px;">
+        This device remembers the last successful customer and block you opened.
+      </div>
+      <div class="resumeMeta">
+        <div><strong>Customer:</strong> <span id="resumeCustomerLabel" class="mono">â€”</span></div>
+        <div style="margin-top:6px;"><strong>Block:</strong> <span id="resumeBlockLabel" class="mono">â€”</span></div>
+      </div>
+      <div class="btnRow row">
+        <button id="resumeBtn" type="button" class="actionBtn primary">Continue to map</button>
+        <button id="switchCustomerBtn" type="button" class="actionBtn secondary">Change customer</button>
+      </div>
+      <div class="small" style="margin-top:10px;">
+        Need to clear this device? <button id="clearSavedBtn" type="button" class="linkBtn">Forget saved customer</button>
+      </div>
+    </div>
+
     <div class="card">
-      <strong>Open your vineyard</strong>
+      <p class="cardTitle">Open with your customer link or QR</p>
       <p class="small" style="margin-top:8px;">
-        Use the link provided by Southwest Agri-Tech, for example:
+        This is the fastest way to set up the PWA for a customer. Once opened successfully, the app will remember that customer on this device.
       </p>
       <ul class="small">
         <li><code>https://maps.swagritech.com.au/Menzies/</code></li>
@@ -160,16 +226,14 @@
       </ul>
     </div>
 
-    <!-- Optional upgrade: Find my vineyard -->
     <div class="card">
-      <strong>Find my vineyard</strong>
+      <p class="cardTitle">First time on this device or changing customer</p>
       <p class="small" style="margin-top:8px;">
-        If you know your vineyard/customer name, enter it below (e.g. <code>Menzies</code>) and tap Find.
+        Enter the customer name exactly as provided by Southwest Agri-Tech.
       </p>
       <input id="vineyardInput" type="text" placeholder="Enter vineyard/customer name (e.g. Menzies)" />
       <div class="btnRow row">
-        <button id="findBtn" type="button">Find</button>
-        <button id="exampleBtn" type="button">Use example</button>
+        <button id="findBtn" type="button" class="actionBtn primary">Open map</button>
       </div>
       <div id="findOk" class="ok">
         <strong>Found!</strong> Redirecting…
@@ -242,6 +306,7 @@
     // ---------------------------
     const GPS_PROCESS_THROTTLE_MS = 300;
     const CONTROLS_COLLAPSED_KEY = "vineyardMapsControlsCollapsed";
+    const LAST_CONTEXT_KEY = "vineyardMapsLastContext";
 
     // ---------------------------
     // Helpers
@@ -273,6 +338,53 @@
       const panel = controlsPanel();
       if (!panel) return;
       setControlsCollapsed(!panel.classList.contains("is-collapsed"));
+    }
+
+    function readLastContext() {
+      try {
+        return JSON.parse(localStorage.getItem(LAST_CONTEXT_KEY) || "null");
+      } catch {
+        return null;
+      }
+    }
+
+    function saveLastContext(customer, block) {
+      localStorage.setItem(LAST_CONTEXT_KEY, JSON.stringify({
+        customer,
+        block: block || null,
+        savedAt: Date.now()
+      }));
+    }
+
+    function clearLastContext() {
+      localStorage.removeItem(LAST_CONTEXT_KEY);
+    }
+
+    function focusCustomerSearch() {
+      const input = $("vineyardInput");
+      if (!input) return;
+      input.focus();
+      input.select();
+    }
+
+    function buildCustomerUrl(customer, block = null) {
+      const base = `/${encodeURIComponent(customer)}/`;
+      return block ? `${base}?block=${encodeURIComponent(block)}` : base;
+    }
+
+    function renderLandingResume() {
+      const card = $("resumeCard");
+      const ctx = readLastContext();
+      if (!card) return;
+
+      if (!ctx?.customer) {
+        card.style.display = "none";
+        return;
+      }
+
+      card.style.display = "block";
+      $("resumeCustomerLabel").textContent = ctx.customer;
+      $("resumeBlockLabel").textContent = ctx.block || "Default block";
     }
 
     // ---------------------------
@@ -325,6 +437,7 @@
       $("map").style.display = "none";
       document.querySelector(".controls").style.display = "none";
       $("landing").style.display = "block";
+      renderLandingResume();
 
       const errBox = $("landingError");
       const badText = $("badPathText");
@@ -348,7 +461,9 @@
     function setupLandingFindBox() {
       const input = $("vineyardInput");
       const findBtn = $("findBtn");
-      const exampleBtn = $("exampleBtn");
+      const resumeBtn = $("resumeBtn");
+      const switchCustomerBtn = $("switchCustomerBtn");
+      const clearSavedBtn = $("clearSavedBtn");
       const okBox = $("findOk");
       const errBox = $("findError");
       const errText = $("findErrorText");
@@ -379,7 +494,7 @@
           okBox.style.display = "block";
           // Redirect to /<name>/ (keeps it clean)
           setTimeout(() => {
-            location.href = `/${encodeURIComponent(name)}/`;
+            location.href = buildCustomerUrl(name);
           }, 450);
         } catch (e) {
           errBox.style.display = "block";
@@ -392,10 +507,25 @@
         if (e.key === "Enter") tryFind();
       });
 
-      exampleBtn.addEventListener("click", () => {
-        input.value = "Menzies";
-        tryFind();
-      });
+      if (resumeBtn) {
+        resumeBtn.addEventListener("click", () => {
+          const ctx = readLastContext();
+          if (!ctx?.customer) return;
+          location.href = buildCustomerUrl(ctx.customer, ctx.block);
+        });
+      }
+
+      if (switchCustomerBtn) {
+        switchCustomerBtn.addEventListener("click", focusCustomerSearch);
+      }
+
+      if (clearSavedBtn) {
+        clearSavedBtn.addEventListener("click", () => {
+          clearLastContext();
+          renderLandingResume();
+          focusCustomerSearch();
+        });
+      }
     }
 
     // ---------------------------
@@ -609,6 +739,7 @@
 
       $("customerLabel").textContent = customerId;
       syncCollapsedSummary();
+      renderLandingResume();
       $("followLabel").textContent = "ON";
       $("gpsLabel").textContent = "OFF";
       $("accLabel").textContent = "—";
@@ -732,6 +863,7 @@
         if (gpsMarker) highlightZoneAt(gpsMarker.getPosition(), { forceUpdate: true });
 
         setStatus("OK");
+        saveLastContext(customerId, currentBlockId);
       } catch (e) {
         console.error(e);
         setStatus("ERROR");
