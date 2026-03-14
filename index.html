@@ -195,7 +195,7 @@
     <div class="controlsStatusMini small">
       Customer: <span id="customerLabelCollapsed" class="mono">â€”</span><br>
       Block: <span id="blockLabelCollapsed" class="mono">â€”</span><br>
-      Zone: <span id="zoneLabelCollapsed" class="mono">â€”</span>
+      Zone: <span id="zoneLabelCollapsed" class="pill">â€”</span>
     </div>
 
     <div class="row small">
@@ -254,6 +254,8 @@
       $("customerLabelCollapsed").textContent = $("customerLabel").textContent;
       $("blockLabelCollapsed").textContent = $("blockLabel").textContent;
       $("zoneLabelCollapsed").textContent = $("zoneLabel").textContent;
+      $("zoneLabelCollapsed").style.background = $("zoneLabel").style.background;
+      $("zoneLabelCollapsed").style.color = $("zoneLabel").style.color;
     }
 
     function setControlsCollapsed(collapsed) {
