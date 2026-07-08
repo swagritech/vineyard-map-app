@@ -68,18 +68,21 @@ v1 has one concept ("block") that is actually the NDVI survey unit. v2 has two:
 | **Block** | `*_Boundaries.geojson` (hand-drawn, e.g. in Pix4Dfields) | Vineyard truth: the planting unit a worker navigates by. Carries variety (via attributes), area. | "Block 4/5 - 1.929 ha" |
 | **Survey** | Pix4D NDVI export (existing `blocks/<id>/` files) | An NDVI capture unit: boundary + rx zones. May cover several blocks. | `B3-4` (blocks 3 and 4 together) |
 
-**Critical reality (verified in the Fishbone data): the two layers DISAGREE and only join
-loosely by block number.**
+**Critical reality (verified in the Fishbone data): the two layers DISAGREE, and their
+numbering schemes are DIFFERENT — names/numbers are useless as join keys.**
 
 - Boundaries file has blocks 1, 2, 3, **4/5 combined**, 6, 7, 8 (7 polygons).
 - NDVI surveys are B2-1-12-11-10, **B3-4 combined**, B5, B6, B7 (5 units).
-- So: boundary "4/5" overlaps surveys "B3-4" AND "B5". Boundaries have a Block 8 with no
-  survey. Surveys cover blocks 10, 11, 12 which have no boundary polygon.
+- Spatial verification (2026-07-08) proved the numbers are scrambled between the two:
+  Pix4D's "B5" flight physically sits on drawn "Block 3", "B6" on "Block 1",
+  "B2-1-12-11-10" on "Block 4/5". Sean groups blocks freely when flying NDVI (coarse
+  groupings tell the overhead story) and numbers them independently of the drawn records.
 
 Consequences the implementation MUST honor:
 
-1. Blocks ↔ surveys are matched **by block-number set intersection**
-   (block.numbers ∩ survey.numbers ≠ ∅), producing 0..N surveys per block.
+1. Blocks ↔ surveys are matched **by spatial overlap only** (§4.6), producing 0..N surveys
+   per block. NEVER by names or numbers — a number-based join shipped in the first design
+   mockup and activated visibly wrong zones; Sean caught it immediately.
 2. GPS "which block am I in" hit-tests **block polygons**; GPS "which zone am I in"
    hit-tests **all rx zone polygons directly** — NEVER route zone detection through the
    block→survey mapping (it would be wrong for split/overlapping units).
@@ -173,6 +176,9 @@ Rules:
 - `surveys[]` is derived from the same data as `blocks.json` (id, sourceToken); `numbers`
   parses the token (`B308-103-801` → [308, 103, 801]); `displayName` uses the existing
   `Format-BlockName` friendly-name function.
+- **`numbers` (on both blocks and surveys) are display/sorting metadata ONLY.** They MUST
+  NOT be used to link blocks to surveys — the numbering schemes across the two datasets
+  are proven inconsistent (§3, §4.6).
 - Written with the existing `Save-Json` helper (it already un-escapes `& < > '`).
 
 ### 4.3 `attributes.json` — hand-edited, merged by the importer
@@ -237,6 +243,51 @@ deep coordinate arrays is slow and risky, per-file layout keeps git diffs meanin
 HTTP/2 parallel fetch of ~13 small files (~60–350 KB total per customer) is fine even on
 rural connections. The service worker caches all of it after first load.
 
+### 4.6 Block ↔ survey linking — spatial, computed in the app at load
+
+**Decision record.** The first design joined blocks to surveys by block-number
+intersection. Field review (2026-07-08) disproved it: drawn-boundary numbering and Pix4D
+flight numbering are independent schemes. Verified mapping for Fishbone:
+
+| Drawn boundary | Survey physically covering it | Number-join would have said (wrong) |
+|---|---|---|
+| Block 1 | B6 | B2-1-12-11-10 |
+| Block 2 | B7 | B2-1-12-11-10 |
+| Block 3 | B5 | B3-4 |
+| Block 4/5 | B2-1-12-11-10 | B3-4, B5 |
+| Block 6 | B3-4 | B6 |
+| Block 7 | (none — no NDVI) | B7 |
+| Block 8 | (none — no NDVI) | (none) |
+
+**Algorithm (runtime, in JS, after all files are fetched):** survey `s` is linked to block
+`b` iff ANY polygon part of ANY of `s`'s rx features has its representative point inside
+`b`'s geometry. Representative point = vertex average of the part's outer ring. Cheap
+(~hundreds of point-in-polygon tests per customer) and robust against boundary-edge
+slivers, since a sliver's rep point rarely falls inside the neighbouring block.
+
+```js
+function repPoints(g) {
+  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  return polys.map(rings => {
+    const ring = rings[0];
+    let sx = 0, sy = 0;
+    for (const c of ring) { sx += c[0]; sy += c[1]; }
+    return [sx / ring.length, sy / ring.length];
+  });
+}
+// survey s covers block b iff:
+s.rx.features.some(f => repPoints(f.geometry).some(p => pointInGeom(p[0], p[1], b.geom)))
+```
+
+Rules:
+
+- Links are computed in the app at load and NEVER stored in `vineyard.json` — they cannot
+  go stale, and the importer never needs geometry logic. (PowerShell 5.1 silently unrolls
+  single-element arrays across function boundaries, corrupting nested GeoJSON coordinate
+  handling — verified during this design. Geometry code lives in JavaScript only.)
+- GPS zone detection stays direct (§3 consequence 2) — links drive only tap/jump zone
+  activation and the info card's "NDVI coverage" line.
+
 ---
 
 ## 5. App UX v2 (`index.html`)
@@ -251,16 +302,19 @@ On opening `/<Customer>/`:
    - Block outlines: white/cyan stroke, near-zero fill (satellite imagery stays visible).
 3. **NDVI zones are visible only for the "active" survey(s)** — not all at once (rainbow
    soup). Active surveys change by (last event wins):
-   - Tapping a block → that block's linked surveys become active (and info card opens).
+   - Tapping a block → that block's spatially linked surveys (§4.6) become active
+     (and info card opens).
    - GPS entering a different block → that block's linked surveys become active
      (no card popup while walking — card only on tap).
    - A new **"All zones" checkbox** in the panel forces every survey visible (overrides
      active-set logic while checked). Existing Red/Orange/Green filter checkboxes still
      apply on top.
+   - An active survey also draws its flight boundary as a **dashed outline**, so workers
+     see NDVI coverage that spills past the drawn blocks.
 4. **Info card** (tap a block): fixed card, bottom-center on mobile. Contents:
    - Title: `Block 4/5 — Sauvignon Blanc` (displayName — variety if known)
-   - Meta line: `1.9 ha · NDVI: B3-4, B5` (areaHa if known; linked survey tokens, or
-     "No NDVI survey yet")
+   - Meta line: `1.9 ha · NDVI coverage: B2-1-12-11-10` (areaHa if known; spatially
+     linked survey tokens, or "No NDVI survey yet")
    - Buttons: `Zoom to block` · `Close`. (Zones already activated by the tap.)
 5. **Status panel** (existing panel, reworked labels):
    - `Customer: Fishbone`
@@ -302,9 +356,11 @@ fall back to survey boundaries (`Block: <survey displayName> (survey)`); else `O
 4. Build hit-test caches from the SAME raw JSON (don't re-extract from the Data layer):
    `blockGeoms[] = {key, geom}`, `surveyGeoms[] = {surveyId, geom}`,
    `zoneGeoms[] = {zone, surveyId, geom}`. Reuse the existing `pointInGeom` code as-is.
-5. Layers: `blocksLayer` (boundaries), `surveysLayer` (survey outlines; hidden when a
-   boundaries file exists — visible only in legacy fallback mode), `zonesLayer` (all rx).
-   Zone visibility styling:
+   Then compute each block's `surveyIds` spatially per §4.6.
+5. Layers: `blocksLayer` (boundaries), `surveysLayer` (survey flight outlines), `zonesLayer`
+   (all rx). Survey outlines render **dashed, only while their survey is active or
+   "All zones" is on**; in legacy fallback mode (no boundaries file) they instead render
+   solid at all times and act as the block outlines. Zone visibility styling:
    `visible = zoneEnabled(z) && (allZonesChecked || activeSurveyIds.has(surveyId))`.
 6. Labels: one `google.maps.Marker` per block at the polygon's bounds center
    (`LatLngBounds.getCenter()` over the feature geometry), `icon: {path: CIRCLE, scale: 0}`,
@@ -353,6 +409,10 @@ Unchanged except the find-box probe order: try `vineyard.json` first, then `bloc
    or `Export.zip` files.
 10. If something in this spec contradicts what you find in the repo, STOP and report the
     contradiction instead of improvising.
+11. **Never join the two datasets by block names or numbers** — the drawn-boundary
+    numbering and the Pix4D flight numbering are proven inconsistent (§4.6). Spatial
+    overlap is the only join. If a link looks wrong, inspect geometry; do not "fix" it
+    with a name-based patch.
 
 ---
 
@@ -396,11 +456,12 @@ Files: `index.html` (then copy to `404.html`), `service-worker.js`.
 | # | Action | Expected |
 |---|---|---|
 | B1 | Open `/Fishbone/` | Map fits whole vineyard; 7 labelled block outlines; no zones visible; no card |
-| B2 | Tap the "Block 4/5" polygon | Card: `Block 4/5 — <variety or no dash>`; meta shows `1.9 ha` and `NDVI: B3-4, B5`; zones for BOTH those surveys appear |
+| B2 | Tap the "Block 4/5" polygon | Card: `Block 4/5 — <variety or no dash>`; meta shows `1.9 ha` and `NDVI coverage: B2-1-12-11-10`; that flight's zones + dashed flight outline appear. It MUST NOT activate B3-4 or B5 (§4.6 — names are scrambled) |
+| B2b | Tap "Block 3" | Card meta `NDVI coverage: B5`; B5's zones appear over Block 3 |
 | B3 | Tap "Block 8" | Card shows `No NDVI survey yet`; no zones appear |
 | B4 | Tick "All zones" | Every survey's zones visible; untick → back to active-only |
-| B5 | DevTools > Sensors > set location lat `-33.79210` lng `115.07300`; Start GPS | Status `Block: Block 1`; zones of survey `B2-1-12-11-10` activate; pill shows a colour or "Outside zones" (between rows) |
-| B6 | Move sensor to lat `-33.79265` lng `115.07300` | Status changes to `Block 3` or `Block 4/5` (verify against map); pill updates |
+| B5 | DevTools > Sensors > set location lat `-33.79210` lng `115.07300`; Start GPS | Status `Block: Block 1`; zones of survey `B6` activate (spatial link); pill shows a colour or "Outside zones" (between rows) |
+| B6 | Move sensor to lat `-33.79265` lng `115.07300` | Status changes to `Block 3`; zones of `B5` activate; pill updates |
 | B7 | Jump dropdown → "Block 7" | Map fits Block 7; its zones activate; card opens; URL gains `?block=7` |
 | B8 | Open `/Brookland/` (legacy, no boundaries) | Survey outlines act as blocks, labelled with friendly names ("Blocks 101, 102, 104 & 307"); tap + GPS + dropdown all work |
 | B9 | Open `/Brookland/?block=2` (legacy deep link) | Fits survey 2, activates its zones |
