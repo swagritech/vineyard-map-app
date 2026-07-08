@@ -460,10 +460,16 @@ if (-not $SyncManifest) {
 # Skipped on -DryRun so a dry run truly changes nothing.
 # ---------------------------------------------------------------------------
 if (-not $DryRun) {
-  if (-not (Test-Path $blocksJsonPath)) {
+  if (Test-Path $blocksJsonPath) {
+    $blocksData = Get-Content -Raw $blocksJsonPath | ConvertFrom-Json
+  } elseif ($SyncManifest) {
+    # Boundaries-first onboarding: a brand-new vineyard may have boundaries but no
+    # NDVI flights yet. Use an empty in-memory structure and do NOT write
+    # blocks.json (it stays absent until a real zip import creates it).
+    $blocksData = [pscustomobject]@{ customer = $Customer; defaultBlock = "1"; blocks = @() }
+  } else {
     throw "Cannot build vineyard.json: blocks.json not found at $blocksJsonPath"
   }
-  $blocksData = Get-Content -Raw $blocksJsonPath | ConvertFrom-Json
 
   # --- Boundaries auto-detect: top level only, case-insensitive.
   #     Matches "<anything>_Boundaries.geojson" or bare "boundaries.geojson". ---

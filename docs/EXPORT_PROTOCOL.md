@@ -1,5 +1,21 @@
 # Pix4D Export Naming Protocol (Cheat Sheet)
 
+## Easiest way: double-click "Import NDVI Maps"
+
+You do not need to read this whole document or remember any PowerShell commands.
+In the `vineyard-map-app` folder, double-click **`Import NDVI Maps.cmd`**. A wizard
+opens and walks you through everything:
+
+- Import an NDVI export (zip) - pick the file, it shows you the block mapping
+  before changing anything, then converts it.
+- Update the block boundaries file for a vineyard.
+- Check for gaps (like a missing variety) and publish pending changes.
+
+It asks a plain-English question at every step (Enter always picks the safe
+default) and never publishes to the live map without you confirming. The rest of
+this document is a reference for the underlying `import-pix4d.ps1` script, useful
+if you want to run imports by hand or understand what the wizard is doing.
+
 Use this protocol for all Pix4D exports so imports can run with zero manual renaming.
 
 > **Note:** The importer also reads native Pix4D layer names directly, so renaming is

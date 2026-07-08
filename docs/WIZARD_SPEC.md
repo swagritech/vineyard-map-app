@@ -74,6 +74,7 @@ What do you want to do?
   1) Import an NDVI export (zip)
   2) Update the block boundaries file for a vineyard
   3) Check gaps / publish pending changes
+  Q) Quit
 Choice [1]:
 ```
 
@@ -209,10 +210,14 @@ mode the existing throw stays. No other importer change is permitted.
 
 Shown only when: inside a git work tree AND git identity is set.
 
-1. `git status --porcelain -- "customers/<C>"` — nothing → "Nothing new to publish." and
-   return to menu.
-2. Show the changed files (paths only), then:
+1. `git status --porcelain -- "customers/<C>"`, then FILTER the result to only the
+   publishable paths in step 3 (untracked raw-source folders like
+   `customers/<C>/Fishbone NW/` also show up under the customer pathspec and MUST be
+   ignored). Nothing publishable → "Nothing new to publish." and return to menu.
+2. Show the publishable changed files (paths only), then:
    `Publish these to the live map now? [Y/n]:`
+   Y/N prompts accept only Y, N, or Enter (=Y); anything else re-prompts — a stray
+   keypress must never count as consent to publish.
 3. On Y, stage ONLY:
    `customers/<C>/vineyard.json`, `customers/<C>/attributes.json`,
    `customers/<C>/blocks.json`, `customers/<C>/blocks`, and the canonical
