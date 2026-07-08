@@ -16,6 +16,9 @@ default) and never publishes to the live map without you confirming. The rest of
 this document is a reference for the underlying `import-pix4d.ps1` script, useful
 if you want to run imports by hand or understand what the wizard is doing.
 
+**Full operator instructions (what files to prepare, naming rules, walkthroughs,
+troubleshooting): `docs/NDVI_Maps_User_Guide.docx`.**
+
 Use this protocol for all Pix4D exports so imports can run with zero manual renaming.
 
 > **Note:** The importer also reads native Pix4D layer names directly, so renaming is
