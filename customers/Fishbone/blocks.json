@@ -1,0 +1,31 @@
+{
+    "customer":  "Fishbone",
+    "defaultBlock":  "1",
+    "blocks":  [
+                   {
+                       "id":  "1",
+                       "name":  "B2-1-12-11-10",
+                       "sourceToken":  "B2-1-12-11-10"
+                   },
+                   {
+                       "id":  "2",
+                       "name":  "B3-4",
+                       "sourceToken":  "B3-4"
+                   },
+                   {
+                       "id":  "3",
+                       "name":  "B5",
+                       "sourceToken":  "B5"
+                   },
+                   {
+                       "id":  "4",
+                       "name":  "B6",
+                       "sourceToken":  "B6"
+                   },
+                   {
+                       "id":  "5",
+                       "name":  "B7",
+                       "sourceToken":  "B7"
+                   }
+               ]
+}
