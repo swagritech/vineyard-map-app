@@ -493,19 +493,27 @@ if (-not $DryRun) {
         $featureName = [string]$f.properties.name
       }
 
-      $m = [regex]::Match($featureName, '^Block\s*(?<nums>[\d\s/&,.-]+?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+      # "Block <key> [<variety words>] - <area> ha". Key allows a letter suffix
+      # ("5b") and combined forms ("4/5"). Text between key and dash is the
+      # variety as typed in the drawing tool; attributes.json can override it.
+      $m = [regex]::Match($featureName, '^Block\s+(?<key>\d+[A-Za-z]?(?:\s*[/&,-]\s*\d+[A-Za-z]?)*)\s*(?<label>[^-]*?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
       if ($m.Success) {
-        $key = $m.Groups['nums'].Value.Trim()
+        $key = ($m.Groups['key'].Value -replace '\s+', '')
+        $parsedVariety = $m.Groups['label'].Value.Trim()
         $areaHa = [double]::Parse($m.Groups['area'].Value, [System.Globalization.CultureInfo]::InvariantCulture)
-        $sep = [char[]]@('/', [char]0x26, ',', ' ', '-')
+        $sep = [char[]]@('/', [char]0x26, ',', '-')
         $numbers = @(
           $key.Split($sep, [System.StringSplitOptions]::RemoveEmptyEntries) |
-            ForEach-Object { $n = 0; if ([int]::TryParse($_, [ref]$n)) { $n } }
+            ForEach-Object {
+              $nm = [regex]::Match($_, '^\d+')
+              if ($nm.Success) { [int]$nm.Value }
+            }
         )
         $displayName = "Block " + $key
       } else {
         # Never drop a feature: emit it with the raw name as its key.
         $key = $featureName
+        $parsedVariety = ""
         $areaHa = $null
         $numbers = @()
         $displayName = $featureName
@@ -517,7 +525,7 @@ if (-not $DryRun) {
         displayName = $displayName
         numbers = $numbers
         areaHa = $areaHa
-        variety = ""
+        variety = $parsedVariety
         notes = ""
       }
       $blockList += $block
@@ -531,9 +539,11 @@ if (-not $DryRun) {
   $attributes = $null
   if ($null -ne $boundariesName) {
     if (-not (Test-Path $attributesPath)) {
+      # Pre-filled with the varieties parsed from the boundary names; edit this
+      # file only to correct or override them.
       $scaffold = [ordered]@{}
-      foreach ($key in $blockKeysOrdered) {
-        $scaffold[$key] = [ordered]@{ variety = ""; notes = "" }
+      foreach ($block in $blockList) {
+        $scaffold[[string]$block['key']] = [ordered]@{ variety = [string]$block['variety']; notes = "" }
       }
       Save-Json $scaffold $attributesPath
       Write-Host ("Scaffolded attributes.json: {0}" -f $attributesPath)
@@ -545,9 +555,12 @@ if (-not $DryRun) {
       $ap = $attributes.PSObject.Properties | Where-Object { $_.Name -eq $block['key'] }
       if ($ap) { $attrEntry = $ap.Value }
       if ($null -ne $attrEntry) {
-        # Copy known + unknown fields verbatim (forward compatibility).
+        # Copy known + unknown fields (forward compatibility). Empty strings do
+        # not override, so a blank attributes entry keeps the name-parsed variety.
         foreach ($prop in $attrEntry.PSObject.Properties) {
-          $block[$prop.Name] = $prop.Value
+          $v = $prop.Value
+          if ($v -is [string] -and [string]::IsNullOrWhiteSpace($v)) { continue }
+          $block[$prop.Name] = $v
         }
       }
     }

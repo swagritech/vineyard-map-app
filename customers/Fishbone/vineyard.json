@@ -1,85 +1,128 @@
 {
     "schemaVersion":  2,
     "customer":  "Fishbone",
-    "updatedUtc":  "2026-07-08T10:23:57Z",
+    "updatedUtc":  "2026-07-08T11:29:50Z",
     "boundaries":  "Fishbone_Boundaries.geojson",
     "blocks":  [
                    {
                        "key":  "1",
-                       "featureName":  "Block 1 - 1.259 ha",
+                       "featureName":  "Block 1 Cab Sauv - 0.588 ha",
                        "displayName":  "Block 1",
                        "numbers":  [
                                        1
                                    ],
-                       "areaHa":  1.259,
-                       "variety":  "",
+                       "areaHa":  0.588,
+                       "variety":  "Cab Sauv",
                        "notes":  ""
                    },
                    {
                        "key":  "2",
-                       "featureName":  "Block 2 - 0.622 ha",
+                       "featureName":  "Block 2 Tempranillo - 0.267 ha",
                        "displayName":  "Block 2",
                        "numbers":  [
                                        2
                                    ],
-                       "areaHa":  0.622,
-                       "variety":  "",
+                       "areaHa":  0.267,
+                       "variety":  "Tempranillo",
                        "notes":  ""
                    },
                    {
                        "key":  "3",
-                       "featureName":  "Block 3 - 1.315 ha",
+                       "featureName":  "Block 3 Cab Sauv - 0.704 ha",
                        "displayName":  "Block 3",
                        "numbers":  [
                                        3
                                    ],
-                       "areaHa":  1.315,
-                       "variety":  "",
+                       "areaHa":  0.704,
+                       "variety":  "Cab Sauv",
                        "notes":  ""
                    },
                    {
-                       "key":  "4/5",
-                       "featureName":  "Block 4/5 - 1.929 ha",
-                       "displayName":  "Block 4/5",
+                       "key":  "4",
+                       "featureName":  "Block 4 Tempranillo - 0.108 ha",
+                       "displayName":  "Block 4",
                        "numbers":  [
-                                       4,
+                                       4
+                                   ],
+                       "areaHa":  0.108,
+                       "variety":  "Tempranillo",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "5",
+                       "featureName":  "Block 5 Cab Sauv - 1.228 ha",
+                       "displayName":  "Block 5",
+                       "numbers":  [
                                        5
                                    ],
-                       "areaHa":  1.929,
-                       "variety":  "",
+                       "areaHa":  1.228,
+                       "variety":  "Cab Sauv",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "5b",
+                       "featureName":  "Block 5b Malbec - 0.082 ha",
+                       "displayName":  "Block 5b",
+                       "numbers":  [
+                                       5
+                                   ],
+                       "areaHa":  0.082,
+                       "variety":  "Malbec",
                        "notes":  ""
                    },
                    {
                        "key":  "6",
-                       "featureName":  "Block 6 - 0.843 ha",
+                       "featureName":  "Block 6 Chardonnay - 1.276 ha",
                        "displayName":  "Block 6",
                        "numbers":  [
                                        6
                                    ],
-                       "areaHa":  0.843,
-                       "variety":  "",
+                       "areaHa":  1.276,
+                       "variety":  "Chardonnay",
                        "notes":  ""
                    },
                    {
                        "key":  "7",
-                       "featureName":  "Block 7 - 1.563 ha",
+                       "featureName":  "Block 7 Chardonnay - 0.597 ha",
                        "displayName":  "Block 7",
                        "numbers":  [
                                        7
                                    ],
-                       "areaHa":  1.563,
-                       "variety":  "",
+                       "areaHa":  0.597,
+                       "variety":  "Chardonnay",
                        "notes":  ""
                    },
                    {
-                       "key":  "8",
-                       "featureName":  "Block 8 - 1.160 ha",
-                       "displayName":  "Block 8",
+                       "key":  "10",
+                       "featureName":  "Block 10 Pinot - 0.386 ha",
+                       "displayName":  "Block 10",
                        "numbers":  [
-                                       8
+                                       10
                                    ],
-                       "areaHa":  1.16,
-                       "variety":  "",
+                       "areaHa":  0.386,
+                       "variety":  "Pinot",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "11",
+                       "featureName":  "Block 11 Vermintino - 0.304 ha",
+                       "displayName":  "Block 11",
+                       "numbers":  [
+                                       11
+                                   ],
+                       "areaHa":  0.304,
+                       "variety":  "Vermintino",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "12",
+                       "featureName":  "Block 12 Malbec - 0.302 ha",
+                       "displayName":  "Block 12",
+                       "numbers":  [
+                                       12
+                                   ],
+                       "areaHa":  0.302,
+                       "variety":  "Malbec",
                        "notes":  ""
                    }
                ],

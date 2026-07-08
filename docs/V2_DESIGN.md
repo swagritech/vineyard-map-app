@@ -168,9 +168,13 @@ Rules:
 - `blocks[].featureName` is the EXACT `name` property of the corresponding feature in the
   boundaries geojson. The app matches features to manifest entries by this exact string —
   the app never parses feature names itself.
-- `blocks[].key` and `numbers` come from parsing the feature name with (case-insensitive):
-  `^Block\s*(?<nums>[\d\s/&,.-]+?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$`
-  where `nums` splits on `/ & , space -` into integers. `displayName` = `"Block " + key`.
+- `blocks[].key`, `variety` and `numbers` come from parsing the feature name with
+  (case-insensitive):
+  `^Block\s+(?<key>\d+[A-Za-z]?(?:\s*[/&,-]\s*\d+[A-Za-z]?)*)\s*(?<label>[^-]*?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$`
+  Handles `Block 5 Cab Sauv - 1.228 ha` (variety in name — Sean's normal workflow),
+  `Block 5b Malbec - 0.082 ha` (letter-suffix keys), and `Block 4/5 - 1.929 ha`
+  (combined, no variety). `label` = parsed variety; `numbers` takes the leading integer
+  of each key part (display/sorting only). `displayName` = `"Block " + key`.
   **If a feature name does not match the regex, still emit a block entry**: key = full name,
   numbers = [], areaHa = null, displayName = full name. Never drop features.
 - `surveys[]` is derived from the same data as `blocks.json` (id, sourceToken); `numbers`
@@ -198,11 +202,13 @@ Rules:
   (all keys, empty strings) so Sean only has to fill in values.
 - The importer MUST NOT overwrite an existing `attributes.json`.
 
-**Variety workflow (decision record).** Sean usually types the variety into the block name
-in the drawing tool, but with no consistent format — sometimes it exports, sometimes not.
-Therefore: the importer MUST NOT attempt to parse variety from freeform feature names.
-`attributes.json` is the single source of truth for variety. To make gaps visible, the
-importer prints a summary table after every run that touches a customer with boundaries:
+**Variety workflow (decision record, revised 2026-07-08).** Sean types the variety into
+the block name in the drawing tool as `Block <n> <Variety> - <area> ha`, and his re-export
+confirmed the format is consistent. Therefore: the importer parses variety from the name
+(§4.2 regex), and precedence is **attributes.json (non-empty values) > name-parsed >
+empty**. Empty strings in attributes.json never override a name-parsed variety; the
+scaffold is pre-filled with parsed varieties so hand-editing is only needed for
+corrections. The gap table prints after every run that touches a customer with boundaries:
 
 ```
 Block attributes for 'Fishbone':
