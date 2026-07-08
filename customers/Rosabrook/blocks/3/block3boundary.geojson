@@ -1,0 +1,7 @@
+{
+"type": "FeatureCollection",
+"name": "NDVI - PGRBK03 3 zones_Boundary",
+"features": [
+{ "type": "Feature", "properties": { "name": "Rosa Brook 050425" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 115.215068, -33.9438247 ], [ 115.2151572, -33.9430255 ], [ 115.2147541, -33.9430479 ], [ 115.2146713, -33.9437747 ], [ 115.215068, -33.9438247 ] ] ] } }
+]
+}

@@ -1,0 +1,136 @@
+{
+    "schemaVersion":  2,
+    "customer":  "Rosabrook",
+    "updatedUtc":  "2026-07-08T15:21:09Z",
+    "boundaries":  "Rosabrook_Boundaries.geojson",
+    "blocks":  [
+                   {
+                       "key":  "CSRBK02",
+                       "featureName":  "CSRBK02 - Cabernet - 1.446 ha",
+                       "displayName":  "CSRBK02",
+                       "numbers":  [
+                                       2
+                                   ],
+                       "areaHa":  1.446,
+                       "variety":  "Cabernet",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "CHRBK08",
+                       "featureName":  "CHRBK08 - Chardonnay - 0.903 ha",
+                       "displayName":  "CHRBK08",
+                       "numbers":  [
+                                       8
+                                   ],
+                       "areaHa":  0.903,
+                       "variety":  "Chardonnay",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "CHRBK04",
+                       "featureName":  "CHRBK04 - Chardonnay - 1.884 ha",
+                       "displayName":  "CHRBK04",
+                       "numbers":  [
+                                       4
+                                   ],
+                       "areaHa":  1.884,
+                       "variety":  "Chardonnay",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "PGRBK03",
+                       "featureName":  "PGRBK03 - Pinot Gris - 0.314 ha",
+                       "displayName":  "PGRBK03",
+                       "numbers":  [
+                                       3
+                                   ],
+                       "areaHa":  0.314,
+                       "variety":  "Pinot Gris",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "SBRKB09",
+                       "featureName":  "SBRKB09 - Sauv Blanc - 0.811 ha",
+                       "displayName":  "SBRKB09",
+                       "numbers":  [
+                                       9
+                                   ],
+                       "areaHa":  0.811,
+                       "variety":  "Sauv Blanc",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "SBRK01",
+                       "featureName":  "SBRK01 - Sauv Blanc - 1.275 ha",
+                       "displayName":  "SBRK01",
+                       "numbers":  [
+                                       1
+                                   ],
+                       "areaHa":  1.275,
+                       "variety":  "Sauv Blanc",
+                       "notes":  ""
+                   }
+               ],
+    "surveys":  [
+                    {
+                        "id":  "1",
+                        "token":  "SBRK01",
+                        "displayName":  "SBRK01",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/1/block1boundary.geojson",
+                        "rx":  "blocks/1/block1rx.geojson"
+                    },
+                    {
+                        "id":  "2",
+                        "token":  "CSRBK02",
+                        "displayName":  "CSRBK02",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/2/block2boundary.geojson",
+                        "rx":  "blocks/2/block2rx.geojson"
+                    },
+                    {
+                        "id":  "3",
+                        "token":  "PGRBK03",
+                        "displayName":  "PGRBK03",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/3/block3boundary.geojson",
+                        "rx":  "blocks/3/block3rx.geojson"
+                    },
+                    {
+                        "id":  "4",
+                        "token":  "CHRBK04",
+                        "displayName":  "CHRBK04",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/4/block4boundary.geojson",
+                        "rx":  "blocks/4/block4rx.geojson"
+                    },
+                    {
+                        "id":  "8",
+                        "token":  "CHRBK08",
+                        "displayName":  "CHRBK08",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/8/block8boundary.geojson",
+                        "rx":  "blocks/8/block8rx.geojson"
+                    },
+                    {
+                        "id":  "9",
+                        "token":  "SBRKB09",
+                        "displayName":  "SBRKB09",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/9/block9boundary.geojson",
+                        "rx":  "blocks/9/block9rx.geojson"
+                    }
+                ]
+}

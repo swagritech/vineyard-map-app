@@ -1,0 +1,26 @@
+{
+    "CSRBK02":  {
+                    "variety":  "Cabernet",
+                    "notes":  ""
+                },
+    "CHRBK08":  {
+                    "variety":  "Chardonnay",
+                    "notes":  ""
+                },
+    "CHRBK04":  {
+                    "variety":  "Chardonnay",
+                    "notes":  ""
+                },
+    "PGRBK03":  {
+                    "variety":  "Pinot Gris",
+                    "notes":  ""
+                },
+    "SBRKB09":  {
+                    "variety":  "Sauv Blanc",
+                    "notes":  ""
+                },
+    "SBRK01":  {
+                   "variety":  "Sauv Blanc",
+                   "notes":  ""
+               }
+}

@@ -1,0 +1,36 @@
+{
+    "customer":  "Rosabrook",
+    "defaultBlock":  "1",
+    "blocks":  [
+                   {
+                       "id":  "1",
+                       "name":  "SBRK01",
+                       "sourceToken":  "SBRK01"
+                   },
+                   {
+                       "id":  "2",
+                       "name":  "CSRBK02",
+                       "sourceToken":  "CSRBK02"
+                   },
+                   {
+                       "id":  "3",
+                       "name":  "PGRBK03",
+                       "sourceToken":  "PGRBK03"
+                   },
+                   {
+                       "id":  "4",
+                       "name":  "CHRBK04",
+                       "sourceToken":  "CHRBK04"
+                   },
+                   {
+                       "id":  "8",
+                       "name":  "CHRBK08",
+                       "sourceToken":  "CHRBK08"
+                   },
+                   {
+                       "id":  "9",
+                       "name":  "SBRKB09",
+                       "sourceToken":  "SBRKB09"
+                   }
+               ]
+}
