@@ -1,0 +1,143 @@
+{
+    "schemaVersion":  2,
+    "customer":  "Fishbone",
+    "updatedUtc":  "2026-07-08T10:23:57Z",
+    "boundaries":  "Fishbone_Boundaries.geojson",
+    "blocks":  [
+                   {
+                       "key":  "1",
+                       "featureName":  "Block 1 - 1.259 ha",
+                       "displayName":  "Block 1",
+                       "numbers":  [
+                                       1
+                                   ],
+                       "areaHa":  1.259,
+                       "variety":  "",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "2",
+                       "featureName":  "Block 2 - 0.622 ha",
+                       "displayName":  "Block 2",
+                       "numbers":  [
+                                       2
+                                   ],
+                       "areaHa":  0.622,
+                       "variety":  "",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "3",
+                       "featureName":  "Block 3 - 1.315 ha",
+                       "displayName":  "Block 3",
+                       "numbers":  [
+                                       3
+                                   ],
+                       "areaHa":  1.315,
+                       "variety":  "",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "4/5",
+                       "featureName":  "Block 4/5 - 1.929 ha",
+                       "displayName":  "Block 4/5",
+                       "numbers":  [
+                                       4,
+                                       5
+                                   ],
+                       "areaHa":  1.929,
+                       "variety":  "",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "6",
+                       "featureName":  "Block 6 - 0.843 ha",
+                       "displayName":  "Block 6",
+                       "numbers":  [
+                                       6
+                                   ],
+                       "areaHa":  0.843,
+                       "variety":  "",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "7",
+                       "featureName":  "Block 7 - 1.563 ha",
+                       "displayName":  "Block 7",
+                       "numbers":  [
+                                       7
+                                   ],
+                       "areaHa":  1.563,
+                       "variety":  "",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "8",
+                       "featureName":  "Block 8 - 1.160 ha",
+                       "displayName":  "Block 8",
+                       "numbers":  [
+                                       8
+                                   ],
+                       "areaHa":  1.16,
+                       "variety":  "",
+                       "notes":  ""
+                   }
+               ],
+    "surveys":  [
+                    {
+                        "id":  "2",
+                        "token":  "B2-1-12-11-10",
+                        "displayName":  "Blocks 2, 1, 12, 11 & 10",
+                        "numbers":  [
+                                        2,
+                                        1,
+                                        12,
+                                        11,
+                                        10
+                                    ],
+                        "boundary":  "blocks/2/block2boundary.geojson",
+                        "rx":  "blocks/2/block2rx.geojson"
+                    },
+                    {
+                        "id":  "3",
+                        "token":  "B3-4",
+                        "displayName":  "Blocks 3 & 4",
+                        "numbers":  [
+                                        3,
+                                        4
+                                    ],
+                        "boundary":  "blocks/3/block3boundary.geojson",
+                        "rx":  "blocks/3/block3rx.geojson"
+                    },
+                    {
+                        "id":  "5",
+                        "token":  "B5",
+                        "displayName":  "Block 5",
+                        "numbers":  [
+                                        5
+                                    ],
+                        "boundary":  "blocks/5/block5boundary.geojson",
+                        "rx":  "blocks/5/block5rx.geojson"
+                    },
+                    {
+                        "id":  "6",
+                        "token":  "B6",
+                        "displayName":  "Block 6",
+                        "numbers":  [
+                                        6
+                                    ],
+                        "boundary":  "blocks/6/block6boundary.geojson",
+                        "rx":  "blocks/6/block6rx.geojson"
+                    },
+                    {
+                        "id":  "7",
+                        "token":  "B7",
+                        "displayName":  "Block 7",
+                        "numbers":  [
+                                        7
+                                    ],
+                        "boundary":  "blocks/7/block7boundary.geojson",
+                        "rx":  "blocks/7/block7rx.geojson"
+                    }
+                ]
+}

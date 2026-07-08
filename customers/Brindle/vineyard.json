@@ -1,0 +1,71 @@
+{
+    "schemaVersion":  2,
+    "customer":  "Brindle",
+    "updatedUtc":  "2026-07-08T10:21:57Z",
+    "boundaries":  null,
+    "blocks":  [
+
+               ],
+    "surveys":  [
+                    {
+                        "id":  "1",
+                        "token":  "B1",
+                        "displayName":  "Block 1",
+                        "numbers":  [
+                                        1
+                                    ],
+                        "boundary":  "blocks/1/block1boundary.geojson",
+                        "rx":  "blocks/1/block1rx.geojson"
+                    },
+                    {
+                        "id":  "2",
+                        "token":  "B2",
+                        "displayName":  "Block 2",
+                        "numbers":  [
+                                        2
+                                    ],
+                        "boundary":  "blocks/2/block2boundary.geojson",
+                        "rx":  "blocks/2/block2rx.geojson"
+                    },
+                    {
+                        "id":  "3",
+                        "token":  "B3",
+                        "displayName":  "Block 3",
+                        "numbers":  [
+                                        3
+                                    ],
+                        "boundary":  "blocks/3/block3boundary.geojson",
+                        "rx":  "blocks/3/block3rx.geojson"
+                    },
+                    {
+                        "id":  "4",
+                        "token":  "B4",
+                        "displayName":  "Block 4",
+                        "numbers":  [
+                                        4
+                                    ],
+                        "boundary":  "blocks/4/block4boundary.geojson",
+                        "rx":  "blocks/4/block4rx.geojson"
+                    },
+                    {
+                        "id":  "5",
+                        "token":  "B5",
+                        "displayName":  "Block 5",
+                        "numbers":  [
+                                        5
+                                    ],
+                        "boundary":  "blocks/5/block5boundary.geojson",
+                        "rx":  "blocks/5/block5rx.geojson"
+                    },
+                    {
+                        "id":  "6",
+                        "token":  "B6",
+                        "displayName":  "Block 6",
+                        "numbers":  [
+                                        6
+                                    ],
+                        "boundary":  "blocks/6/block6boundary.geojson",
+                        "rx":  "blocks/6/block6rx.geojson"
+                    }
+                ]
+}

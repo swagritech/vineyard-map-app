@@ -1,0 +1,86 @@
+{
+    "schemaVersion":  2,
+    "customer":  "Brookland",
+    "updatedUtc":  "2026-07-08T10:21:56Z",
+    "boundaries":  null,
+    "blocks":  [
+
+               ],
+    "surveys":  [
+                    {
+                        "id":  "1",
+                        "token":  "B101-102-104-307",
+                        "displayName":  "Blocks 101, 102, 104 & 307",
+                        "numbers":  [
+                                        101,
+                                        102,
+                                        104,
+                                        307
+                                    ],
+                        "boundary":  "blocks/1/block1boundary.geojson",
+                        "rx":  "blocks/1/block1rx.geojson"
+                    },
+                    {
+                        "id":  "2",
+                        "token":  "B302",
+                        "displayName":  "Block 302",
+                        "numbers":  [
+                                        302
+                                    ],
+                        "boundary":  "blocks/2/block2boundary.geojson",
+                        "rx":  "blocks/2/block2rx.geojson"
+                    },
+                    {
+                        "id":  "3",
+                        "token":  "B305",
+                        "displayName":  "Block 305",
+                        "numbers":  [
+                                        305
+                                    ],
+                        "boundary":  "blocks/3/block3boundary.geojson",
+                        "rx":  "blocks/3/block3rx.geojson"
+                    },
+                    {
+                        "id":  "4",
+                        "token":  "B306",
+                        "displayName":  "Block 306",
+                        "numbers":  [
+                                        306
+                                    ],
+                        "boundary":  "blocks/4/block4boundary.geojson",
+                        "rx":  "blocks/4/block4rx.geojson"
+                    },
+                    {
+                        "id":  "5",
+                        "token":  "B308-103-801",
+                        "displayName":  "Blocks 308, 103 & 801",
+                        "numbers":  [
+                                        308,
+                                        103,
+                                        801
+                                    ],
+                        "boundary":  "blocks/5/block5boundary.geojson",
+                        "rx":  "blocks/5/block5rx.geojson"
+                    },
+                    {
+                        "id":  "6",
+                        "token":  "B701",
+                        "displayName":  "Block 701",
+                        "numbers":  [
+                                        701
+                                    ],
+                        "boundary":  "blocks/6/block6boundary.geojson",
+                        "rx":  "blocks/6/block6rx.geojson"
+                    },
+                    {
+                        "id":  "7",
+                        "token":  "B702",
+                        "displayName":  "Block 702",
+                        "numbers":  [
+                                        702
+                                    ],
+                        "boundary":  "blocks/7/block7boundary.geojson",
+                        "rx":  "blocks/7/block7rx.geojson"
+                    }
+                ]
+}

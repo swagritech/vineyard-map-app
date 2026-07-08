@@ -1,0 +1,21 @@
+{
+    "schemaVersion":  2,
+    "customer":  "Secretgarden",
+    "updatedUtc":  "2026-07-08T10:21:59Z",
+    "boundaries":  null,
+    "blocks":  [
+
+               ],
+    "surveys":  [
+                    {
+                        "id":  "1",
+                        "token":  "B1",
+                        "displayName":  "Block 1",
+                        "numbers":  [
+                                        1
+                                    ],
+                        "boundary":  "blocks/1/block1boundary.geojson",
+                        "rx":  "blocks/1/block1rx.geojson"
+                    }
+                ]
+}

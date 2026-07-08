@@ -1,11 +1,12 @@
 param(
-  [Parameter(Mandatory = $true)]
+  [Parameter(Mandatory = $false)]
   [string]$ZipPath,
 
   [Parameter(Mandatory = $true)]
   [string]$Customer,
 
   [string]$RepoRoot = ".",
+  [switch]$SyncManifest,
   [switch]$DryRun,
   [switch]$Commit,
   [switch]$Push,
@@ -238,8 +239,6 @@ function Commit-AndPushChanges(
 }
 
 $repoRoot = (Resolve-Path $RepoRoot).Path
-$zipPath = (Resolve-Path $ZipPath).Path
-$ogr2ogrPath = Resolve-Ogr2Ogr
 
 $customersRoot = Join-Path $repoRoot "customers"
 $customerRoot = Join-Path $customersRoot $Customer
@@ -254,11 +253,20 @@ if (-not (Test-Path $customerRoot)) {
   throw "Customer folder does not exist: $customerRoot"
 }
 
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("pix4d_ingest_" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $tmp | Out-Null
+# -SyncManifest rebuilds vineyard.json from existing blocks.json + files on disk;
+# it skips the zip / ogr2ogr pipeline entirely (and never rewrites blocks.json).
+if (-not $SyncManifest) {
+  if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+    throw "-ZipPath is required unless -SyncManifest is specified."
+  }
+  $zipPath = (Resolve-Path $ZipPath).Path
+  $ogr2ogrPath = Resolve-Ogr2Ogr
 
-try {
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("pix4d_ingest_" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $tmp | Out-Null
+
+  try {
   [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $tmp)
 
   $shps = Get-ChildItem -Path $tmp -Recurse -File -Filter *.shp
@@ -438,8 +446,209 @@ try {
   Write-Host ""
   Write-Host ("blocks.json: {0}" -f $blocksJsonPath)
 }
-finally {
-  if (Test-Path $tmp) {
-    Remove-Item -Recurse -Force $tmp
+  finally {
+    if (Test-Path $tmp) {
+      Remove-Item -Recurse -Force $tmp
+    }
   }
+}
+
+# ---------------------------------------------------------------------------
+# v2 manifest generation (§4.2-§4.4). Runs for both zip imports and
+# -SyncManifest. Metadata only: it reads geometry files for feature names but
+# NEVER rewrites any .geojson (no ConvertTo-Json round-trip of geometry).
+# Skipped on -DryRun so a dry run truly changes nothing.
+# ---------------------------------------------------------------------------
+if (-not $DryRun) {
+  if (-not (Test-Path $blocksJsonPath)) {
+    throw "Cannot build vineyard.json: blocks.json not found at $blocksJsonPath"
+  }
+  $blocksData = Get-Content -Raw $blocksJsonPath | ConvertFrom-Json
+
+  # --- Boundaries auto-detect: top level only, case-insensitive.
+  #     Matches "<anything>_Boundaries.geojson" or bare "boundaries.geojson". ---
+  $boundariesName = $null
+  $boundaryFile = $null
+  $boundaryCandidates = @(
+    Get-ChildItem -Path $customerRoot -File |
+      Where-Object { $_.Name -imatch '(^|_)boundaries\.geojson$' } |
+      Sort-Object Name
+  )
+  if ($boundaryCandidates.Count -gt 0) {
+    $boundaryFile = $boundaryCandidates[0]
+    $boundariesName = $boundaryFile.Name
+  }
+
+  # --- Build blocks[] from the boundaries feature names (metadata only). ---
+  # Arrays for 'numbers' are built inline here (never returned from a function)
+  # so PowerShell 5.1 cannot unroll single-element arrays.
+  $blockList = @()
+  $blockKeysOrdered = @()
+
+  if ($null -ne $boundaryFile) {
+    $boundaryJson = Get-Content -Raw $boundaryFile.FullName | ConvertFrom-Json
+    foreach ($f in @($boundaryJson.features)) {
+      $featureName = ""
+      if ($null -ne $f.properties -and ($f.properties.PSObject.Properties.Name -contains 'name')) {
+        $featureName = [string]$f.properties.name
+      }
+
+      $m = [regex]::Match($featureName, '^Block\s*(?<nums>[\d\s/&,.-]+?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+      if ($m.Success) {
+        $key = $m.Groups['nums'].Value.Trim()
+        $areaHa = [double]::Parse($m.Groups['area'].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+        $sep = [char[]]@('/', [char]0x26, ',', ' ', '-')
+        $numbers = @(
+          $key.Split($sep, [System.StringSplitOptions]::RemoveEmptyEntries) |
+            ForEach-Object { $n = 0; if ([int]::TryParse($_, [ref]$n)) { $n } }
+        )
+        $displayName = "Block " + $key
+      } else {
+        # Never drop a feature: emit it with the raw name as its key.
+        $key = $featureName
+        $areaHa = $null
+        $numbers = @()
+        $displayName = $featureName
+      }
+
+      $block = [ordered]@{
+        key = $key
+        featureName = $featureName
+        displayName = $displayName
+        numbers = $numbers
+        areaHa = $areaHa
+        variety = ""
+        notes = ""
+      }
+      $blockList += $block
+      $blockKeysOrdered += $key
+    }
+  }
+
+  # --- attributes.json: scaffold when absent (boundaries present), never
+  #     overwrite an existing file, then merge into blocks[] every run. ---
+  $attributesPath = Join-Path $customerRoot "attributes.json"
+  $attributes = $null
+  if ($null -ne $boundariesName) {
+    if (-not (Test-Path $attributesPath)) {
+      $scaffold = [ordered]@{}
+      foreach ($key in $blockKeysOrdered) {
+        $scaffold[$key] = [ordered]@{ variety = ""; notes = "" }
+      }
+      Save-Json $scaffold $attributesPath
+      Write-Host ("Scaffolded attributes.json: {0}" -f $attributesPath)
+    }
+    $attributes = Get-Content -Raw $attributesPath | ConvertFrom-Json
+
+    foreach ($block in $blockList) {
+      $attrEntry = $null
+      $ap = $attributes.PSObject.Properties | Where-Object { $_.Name -eq $block['key'] }
+      if ($ap) { $attrEntry = $ap.Value }
+      if ($null -ne $attrEntry) {
+        # Copy known + unknown fields verbatim (forward compatibility).
+        foreach ($prop in $attrEntry.PSObject.Properties) {
+          $block[$prop.Name] = $prop.Value
+        }
+      }
+    }
+  }
+
+  # --- Build surveys[] from blocks.json (id + sourceToken). ---
+  $surveyList = @()
+  foreach ($b in @($blocksData.blocks)) {
+    $sid = [string]$b.id
+    $token = ""
+    if (($b.PSObject.Properties.Name -contains 'sourceToken') -and -not [string]::IsNullOrWhiteSpace([string]$b.sourceToken)) {
+      $token = [string]$b.sourceToken
+    } else {
+      $token = "B" + $sid
+    }
+    $token = $token.ToUpperInvariant()
+
+    $sNumbers = @(
+      $token.TrimStart('B','b').Split('-') |
+        Where-Object { $_ -ne '' } |
+        ForEach-Object { $n = 0; if ([int]::TryParse($_, [ref]$n)) { $n } }
+    )
+
+    $survey = [ordered]@{
+      id = $sid
+      token = $token
+      displayName = Format-BlockName $token
+      numbers = $sNumbers
+      boundary = "blocks/$sid/block${sid}boundary.geojson"
+      rx = "blocks/$sid/block${sid}rx.geojson"
+    }
+    $surveyList += $survey
+  }
+
+  # --- Assemble manifest. ---
+  $manifest = [ordered]@{
+    schemaVersion = 2
+    customer = $Customer
+    updatedUtc = ""
+    boundaries = $boundariesName
+    blocks = @($blockList)
+    surveys = @($surveyList)
+  }
+
+  # --- Idempotent timestamp: reuse the previous updatedUtc when nothing else
+  #     changed, so re-running -SyncManifest produces zero diff. ---
+  $vineyardPath = Join-Path $customerRoot "vineyard.json"
+  $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  $existingRaw = $null
+  $prevStamp = $null
+  if (Test-Path $vineyardPath) {
+    $existingRaw = Get-Content -Raw $vineyardPath
+    try {
+      $existingObj = $existingRaw | ConvertFrom-Json
+      if ($existingObj.PSObject.Properties.Name -contains 'updatedUtc') {
+        $prevStamp = [string]$existingObj.updatedUtc
+      }
+    } catch {
+      $prevStamp = $null
+    }
+  }
+
+  if ($null -ne $prevStamp) {
+    $manifest.updatedUtc = $prevStamp
+    # Reconstruct exactly what Save-Json would write, to compare byte-for-byte.
+    $candJson = $manifest | ConvertTo-Json -Depth 100
+    $candJson = $candJson -replace '\\u0026', '&' -replace '\\u003c', '<' -replace '\\u003e', '>' -replace '\\u0027', "'"
+    $candText = $candJson + [Environment]::NewLine
+    if ($candText -ne $existingRaw) {
+      $manifest.updatedUtc = $stamp
+    }
+  } else {
+    $manifest.updatedUtc = $stamp
+  }
+
+  Save-Json $manifest $vineyardPath
+
+  # --- Variety gap summary (only for customers with boundaries). ---
+  if ($null -ne $boundariesName) {
+    $keyHeader = "key"
+    $nameHeader = "feature name"
+    $kw = $keyHeader.Length
+    $nw = $nameHeader.Length
+    foreach ($block in $blockList) {
+      if (([string]$block['key']).Length -gt $kw) { $kw = ([string]$block['key']).Length }
+      if (([string]$block['featureName']).Length -gt $nw) { $nw = ([string]$block['featureName']).Length }
+    }
+
+    Write-Host ""
+    Write-Host ("Block attributes for '{0}':" -f $Customer)
+    Write-Host ("  {0}  {1}  {2}" -f $keyHeader.PadRight($kw), $nameHeader.PadRight($nw), "variety")
+    foreach ($block in $blockList) {
+      $variety = [string]$block['variety']
+      if ([string]::IsNullOrWhiteSpace($variety)) { $variety = "(empty - fill in attributes.json)" }
+      Write-Host ("  {0}  {1}  {2}" -f ([string]$block['key']).PadRight($kw), ([string]$block['featureName']).PadRight($nw), $variety)
+    }
+  }
+
+  Write-Host ""
+  $boundariesLabel = "null"
+  if ($null -ne $boundariesName) { $boundariesLabel = $boundariesName }
+  Write-Host ("vineyard.json: {0}" -f $vineyardPath)
+  Write-Host ("  schemaVersion 2  boundaries: {0}  blocks: {1}  surveys: {2}" -f $boundariesLabel, $blockList.Count, $surveyList.Count)
 }
