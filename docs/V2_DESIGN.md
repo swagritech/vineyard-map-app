@@ -192,6 +192,22 @@ Rules:
   (all keys, empty strings) so Sean only has to fill in values.
 - The importer MUST NOT overwrite an existing `attributes.json`.
 
+**Variety workflow (decision record).** Sean usually types the variety into the block name
+in the drawing tool, but with no consistent format — sometimes it exports, sometimes not.
+Therefore: the importer MUST NOT attempt to parse variety from freeform feature names.
+`attributes.json` is the single source of truth for variety. To make gaps visible, the
+importer prints a summary table after every run that touches a customer with boundaries:
+
+```
+Block attributes for 'Fishbone':
+  key   feature name              variety
+  1     Block 1 - 1.259 ha        Chardonnay
+  4/5   Block 4/5 - 1.929 ha      (empty - fill in attributes.json)
+```
+
+A drawing-tool naming convention (e.g. `Block 5 - Chardonnay`) MAY be recommended to Sean
+in Phase C docs; an opt-in parser for it is a Phase C decision, not part of A/B.
+
 ### 4.4 Importer changes (`scripts/import-pix4d.ps1`)
 
 1. **Always (re)generate `vineyard.json`** at the end of a successful run (also in the new
