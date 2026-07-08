@@ -417,7 +417,11 @@ function Invoke-PublishStep([string]$Customer, [string]$FlowLabel) {
   }
 
   $customerPathspec = "customers/$Customer"
-  $statusOut = @(& git -C $RepoRoot status --porcelain -- $customerPathspec)
+  # --untracked-files=all: a brand-new customer is one fully-untracked folder,
+  # which git otherwise collapses to a single "customers/<C>/" line that the
+  # per-file filter below would not recognise (real bug: first Rosabrook
+  # publish silently reported "Nothing new to publish").
+  $statusOut = @(& git -C $RepoRoot status --porcelain --untracked-files=all -- $customerPathspec)
   $statusOut = @($statusOut | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
   # Only §8's publishable paths count as changes. Untracked raw-source folders
