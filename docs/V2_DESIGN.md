@@ -310,7 +310,9 @@ On opening `/<Customer>/`:
      active-set logic while checked). Existing Red/Orange/Green filter checkboxes still
      apply on top.
    - An active survey also draws its flight boundary as a **dashed outline**, so workers
-     see NDVI coverage that spills past the drawn blocks.
+     see NDVI coverage that spills past the drawn blocks. (Implementation note: the Maps
+     Data layer cannot render dashed strokes — use `google.maps.Polyline` with dash
+     `icons` per ring, `clickable: false`.)
 4. **Info card** (tap a block): fixed card, bottom-center on mobile. Contents:
    - Title: `Block 4/5 — Sauvignon Blanc` (displayName — variety if known)
    - Meta line: `1.9 ha · NDVI coverage: B2-1-12-11-10` (areaHa if known; spatially
@@ -462,7 +464,7 @@ Files: `index.html` (then copy to `404.html`), `service-worker.js`.
 | B4 | Tick "All zones" | Every survey's zones visible; untick → back to active-only |
 | B5 | DevTools > Sensors > set location lat `-33.79210` lng `115.07300`; Start GPS | Status `Block: Block 1`; zones of survey `B6` activate (spatial link); pill shows a colour or "Outside zones" (between rows) |
 | B6 | Move sensor to lat `-33.79265` lng `115.07300` | Status changes to `Block 3`; zones of `B5` activate; pill updates |
-| B7 | Jump dropdown → "Block 7" | Map fits Block 7; its zones activate; card opens; URL gains `?block=7` |
+| B7 | Jump dropdown → "Block 7" | Map fits Block 7; card opens showing `No NDVI survey yet` (drawn Block 7 has NO spatially linked survey — §4.6); NO zones activate; URL gains `?block=7`. To see zones activate on a jump, use Block 1 (→B6) or Block 4/5 (→B2-1-12-11-10) |
 | B8 | Open `/Brookland/` (legacy, no boundaries) | Survey outlines act as blocks, labelled with friendly names ("Blocks 101, 102, 104 & 307"); tap + GPS + dropdown all work |
 | B9 | Open `/Brookland/?block=2` (legacy deep link) | Fits survey 2, activates its zones |
 | B10 | Open `/NoSuchCustomer/` | Landing page with error (unchanged v1 behavior) |

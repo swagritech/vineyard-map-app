@@ -1,13 +1,14 @@
-const CACHE_NAME = "vineyard-maps-v1";
+const CACHE_NAME = "vineyard-maps-v2";
 
-// Only cache your app assets (NOT Google Maps tiles/scripts).
+// Only cache your app shell (NOT Google Maps tiles/scripts, NOT customer data).
+// Every path here MUST exist on disk, or cache.addAll() rejects and the SW never installs.
 const APP_ASSETS = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
-  "/service-worker.js",
-  "/BlkAZones_3_Boundary.kml",
-  "/BlkAZones_3_Prescription.json"
+  "/images/SWAT_Logo_june2025.png",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png"
 ];
 
 // Install: pre-cache core assets

@@ -293,6 +293,33 @@
       }
     }
     code { background: #f2f2f2; padding: 2px 6px; border-radius: 8px; }
+
+    /* Info card (v2) — tap a block */
+    #infoCard {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      width: min(92vw, 420px);
+      background: rgba(255,255,255,0.97);
+      border: 1px solid var(--swat-border);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+      padding: 14px 16px;
+      z-index: 20;
+      display: none;
+    }
+    #infoCard .infoCardTitle {
+      font-size: 16px;
+      font-weight: 700;
+      color: #111;
+      line-height: 1.2;
+    }
+    #infoCard .infoCardMeta {
+      margin-top: 6px;
+      color: #444;
+    }
+    #infoCard .btnRow { margin-top: 12px; }
   </style>
 
   <script
@@ -433,12 +460,15 @@
     </div>
 
     <div class="row">
-      <label class="small"><strong>Select block</strong></label>
+      <label class="small"><strong>Jump to block</strong></label>
       <select id="blockSelect"></select>
     </div>
 
     <div class="row">
-      <strong>Zone filters</strong>
+      <strong>Zones</strong>
+      <div class="checkRow">
+        <label><input type="checkbox" id="zAll"> All zones</label>
+      </div>
       <div class="checkRow">
         <label><input type="checkbox" id="z1" checked> Red</label>
         <label><input type="checkbox" id="z2" checked> Orange</label>
@@ -464,6 +494,16 @@
 
   <div id="map"></div>
 
+  <!-- Info card (tap a block) -->
+  <div id="infoCard">
+    <div class="infoCardTitle" id="cardTitle">—</div>
+    <div class="infoCardMeta small" id="cardMeta">—</div>
+    <div class="btnRow">
+      <button type="button" class="actionBtn primary" id="cardZoomBtn">Zoom to block</button>
+      <button type="button" class="actionBtn ghost" id="cardCloseBtn">Close</button>
+    </div>
+  </div>
+
   <script>
     // ---------------------------
     // Performance config
@@ -471,6 +511,7 @@
     const GPS_PROCESS_THROTTLE_MS = 300;
     const CONTROLS_COLLAPSED_KEY = "vineyardMapsControlsCollapsed";
     const LAST_CONTEXT_KEY = "vineyardMapsLastContext";
+    const LABEL_MIN_ZOOM = 15;
 
     // ---------------------------
     // Helpers
@@ -584,19 +625,20 @@
     // ---------------------------
     // Paths
     // ---------------------------
-    function blocksIndexUrl(customer) {
-      return `/customers/${encodeURIComponent(customer)}/blocks.json`;
+    function customerDir(customer) {
+      return `/customers/${encodeURIComponent(customer)}/`;
     }
-
-    // boundary: block<NUM>boundary.geojson
-    // rx:       block<NUM>rx.geojson
-    function blockDataPaths(customer, blockId) {
-      const c = encodeURIComponent(customer);
-      const b = encodeURIComponent(blockId);
-      return {
-        boundary: `/customers/${c}/blocks/${b}/block${b}boundary.geojson`,
-        rx:       `/customers/${c}/blocks/${b}/block${b}rx.geojson`
-      };
+    function manifestUrl(customer) {
+      return customerDir(customer) + "vineyard.json";
+    }
+    function blocksIndexUrl(customer) {
+      return customerDir(customer) + "blocks.json";
+    }
+    // Resolve a manifest-relative path (e.g. "blocks/5/block5rx.geojson"
+    // or "Fishbone_Boundaries.geojson") to an absolute URL, encoding each segment.
+    function customerFileUrl(customer, relPath) {
+      const parts = String(relPath).split("/").map(encodeURIComponent).join("/");
+      return customerDir(customer) + parts;
     }
 
     // ---------------------------
@@ -653,19 +695,23 @@
           return;
         }
 
-        const url = blocksIndexUrl(name);
-        try {
-          const r = await fetch(url, { cache: "no-store" });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          // Validate JSON
-          await r.json();
+        // Probe order: vineyard.json (v2) first, then blocks.json (v1 fallback).
+        const candidates = [manifestUrl(name), blocksIndexUrl(name)];
+        let found = false;
+        for (const url of candidates) {
+          try {
+            const r = await fetch(url, { cache: "no-store" });
+            if (r.ok) { await r.json(); found = true; break; }
+          } catch (e) { /* try next candidate */ }
+        }
 
+        if (found) {
           okBox.style.display = "block";
           // Redirect to /<name>/ (keeps it clean)
           setTimeout(() => {
             location.href = buildCustomerUrl(name);
           }, 450);
-        } catch (e) {
+        } else {
           errBox.style.display = "block";
           errText.textContent = `We couldn't find "${name}". Make sure it's spelled exactly as provided, or contact Southwest Agri-Tech.`;
         }
@@ -698,14 +744,34 @@
     }
 
     // ---------------------------
-    // Map + data state
+    // Map + data state (v2)
     // ---------------------------
     let map;
-    let boundaryLayer, zonesLayer;
+    let blocksLayer, zonesLayer;
 
     let customerId = null;
-    let blocksConfig = null;
-    let currentBlockId = null;
+    let manifest = null;         // v2 manifest (loaded or synthesized)
+    let legacyMode = false;      // true when there is no boundaries file (surveys act as blocks)
+
+    let blockByKey = {};         // block key -> manifest block entry (v2)
+    let surveyById = {};         // survey id  -> manifest survey entry
+    let targets = [];            // navigable units (blocks in v2, surveys in legacy)
+    let targetByKey = {};        // key -> target
+
+    // Hit-test caches, built from the SAME raw JSON handed to the Data layers.
+    let blockGeoms = [];         // { key, geom }             (v2 block polygons)
+    let surveyGeoms = [];        // { surveyId, geom }        (survey flight boundaries)
+    let zoneGeoms = [];          // { zone, surveyId, geom }  (all rx zones)
+    let navGeoms = [];           // { key, geom } — block polys (v2) or survey polys (legacy)
+
+    let blockSurveyIds = {};     // block key -> [surveyId,...] (spatial links, §4.6)
+
+    let labelMarkers = [];       // google.maps.Marker[]  (block / survey labels)
+    let surveyOutlines = {};     // surveyId -> google.maps.Polyline[] (dashed flight extents)
+
+    let activeSurveyIds = new Set();
+    let allZonesChecked = false;
+    let cardTarget = null;
 
     // GPS
     let gpsWatch = null;
@@ -714,9 +780,9 @@
     let followMode = true;
     let lastGpsProcessAt = 0;
 
-    // Zone hit-test cache
-    let zoneGeoms = [];   // { zone, geo }
+    // Zone hit-test / status
     let highlightedZone = null;
+    let lastGpsBlockKey = undefined;
 
     // ---------------------------
     // Zone helpers
@@ -769,59 +835,447 @@
       syncCollapsedSummary();
     }
 
-    // ---------------------------
-    // GeoJSON loading (awaitable)
-    // ---------------------------
-    function loadGeoJsonIntoLayer(layer, url) {
-      return new Promise((resolve, reject) => {
-        fetch(url, { cache: "no-store" })
-          .then(r => {
-            if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-            return r.json(); // validate JSON
-          })
-          .then(() => {
-            layer.loadGeoJson(url, null, () => resolve());
-          })
-          .catch(reject);
+    // ===========================================================================
+    // Pure logic (no google.maps / DOM) — factored out so it is unit-testable.
+    // ===========================================================================
+
+    // Representative point per polygon PART = vertex average of its outer ring.
+    // (§4.6, copied verbatim.) GeoJSON coords are [lng, lat].
+    function repPoints(g) {
+      const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+      return polys.map(rings => {
+        const ring = rings[0];
+        let sx = 0, sy = 0;
+        for (const c of ring) { sx += c[0]; sy += c[1]; }
+        return [sx / ring.length, sy / ring.length];
       });
     }
 
-    function computeLayerBounds(layer) {
+    // Spatial block↔survey links (§4.6): survey s covers block b iff ANY rep point
+    // of ANY part of ANY of s's rx features lands inside b's geometry.
+    // blockGeomList: [{key, geom}]; surveyRx: [{surveyId, features:[{geometry}]}].
+    // NEVER name/number-based. Returns { blockKey: [surveyId,...] } in survey order.
+    function computeBlockSurveyLinks(blockGeomList, surveyRx) {
+      const links = {};
+      for (const b of blockGeomList) {
+        links[b.key] = [];
+        for (const s of surveyRx) {
+          const covers = (s.features || []).some(f =>
+            f && f.geometry && repPoints(f.geometry).some(p => pointInGeom(p[0], p[1], b.geom))
+          );
+          if (covers) links[b.key].push(String(s.surveyId));
+        }
+      }
+      return links;
+    }
+
+    // Friendly survey name from a token (mirrors importer Format-BlockName):
+    // "B5" -> "Block 5", "B3-4" -> "Blocks 3 & 4",
+    // "B2-1-12-11-10" -> "Blocks 2, 1, 12, 11 & 10".
+    function formatBlockName(token) {
+      const parts = String(token).replace(/^[Bb]+/, "").split("-")
+        .filter(s => s !== "")
+        .map(s => { const n = parseInt(s, 10); return Number.isNaN(n) ? s : String(n); });
+      if (parts.length <= 1) return "Block " + parts.join("");
+      const head = parts.slice(0, parts.length - 1).join(", ");
+      return "Blocks " + head + " & " + parts[parts.length - 1];
+    }
+
+    // Fallback for un-migrated customers (§5.3 step 1): synthesize an in-memory v2
+    // manifest from v1 blocks.json — surveys only, boundaries null, friendly names.
+    function synthesizeManifestFromBlocks(blocksJson, customer) {
+      const surveys = (blocksJson.blocks || []).map(b => {
+        const id = String(b.id);
+        const token = b.sourceToken || b.name || id;
+        return {
+          id,
+          token,
+          displayName: formatBlockName(token),
+          numbers: [],
+          boundary: `blocks/${id}/block${id}boundary.geojson`,
+          rx: `blocks/${id}/block${id}rx.geojson`
+        };
+      });
+      return { schemaVersion: 2, customer, boundaries: null, blocks: [], surveys };
+    }
+
+    // Navigable units: one per block (v2) or one per survey (legacy).
+    function buildTargets(mf, links) {
+      if (mf.boundaries) {
+        return (mf.blocks || []).map(b => ({
+          kind: "block",
+          key: b.key,
+          displayName: b.displayName || ("Block " + b.key),
+          variety: b.variety || "",
+          areaHa: (b.areaHa == null ? null : b.areaHa),
+          surveyIds: (links[b.key] || []).map(String)
+        }));
+      }
+      return (mf.surveys || []).map(s => ({
+        kind: "survey",
+        key: String(s.id),
+        displayName: s.displayName || ("Block " + s.id),
+        variety: "",
+        areaHa: null,
+        surveyIds: [String(s.id)]
+      }));
+    }
+
+    // Zone visibility predicate (§5.3). Kept pure for testing; styleZones inlines it.
+    function zoneVisiblePure(zone, surveyId, allZones, activeSet, zoneEnabledFn) {
+      return !!zoneEnabledFn(zone) && (!!allZones || activeSet.has(String(surveyId)));
+    }
+
+    // ?block= matching for both modes: v2 matches a block key, legacy a survey id.
+    function matchTargetKey(param, tgts) {
+      if (param == null) return null;
+      const p = String(param);
+      const t = (tgts || []).find(t => String(t.key) === p);
+      return t ? t.key : null;
+    }
+
+    // ---------------------------
+    // Geometry / bounds helpers
+    // ---------------------------
+    function extendBoundsWithGeom(bounds, geom) {
+      if (!geom) return;
+      const addRing = (ring) => ring.forEach(c => bounds.extend(new google.maps.LatLng(c[1], c[0])));
+      const addPoly = (poly) => poly.forEach(addRing);
+      if (geom.type === "Polygon") addPoly(geom.coordinates);
+      else if (geom.type === "MultiPolygon") geom.coordinates.forEach(addPoly);
+    }
+
+    function boundsOfGeoms(geoms) {
       const b = new google.maps.LatLngBounds();
       let any = false;
-      layer.forEach(f => {
-        const g = f.getGeometry();
-        if (!g) return;
-        g.forEachLatLng(ll => { b.extend(ll); any = true; });
-      });
+      for (const g of geoms) { if (g && g.geom) { extendBoundsWithGeom(b, g.geom); any = true; } }
       return any ? b : null;
     }
 
-    function geometryToGeoJson(g) {
-      if (!g) return null;
-      const t = g.getType();
+    function geomCenter(geom) {
+      const b = new google.maps.LatLngBounds();
+      extendBoundsWithGeom(b, geom);
+      return b.getCenter();
+    }
 
-      if (t === "Polygon") {
-        return {
-          type: "Polygon",
-          coordinates: g.getArray().map(ring =>
-            ring.getArray().map(p => [p.lng(), p.lat()])
-          )
-        };
-      }
+    function ringsOf(geom) {
+      if (!geom) return [];
+      if (geom.type === "Polygon") return geom.coordinates;
+      if (geom.type === "MultiPolygon") return geom.coordinates.flat();
+      return [];
+    }
 
-      if (t === "MultiPolygon") {
-        return {
-          type: "MultiPolygon",
-          coordinates: g.getArray().map(poly =>
-            poly.getArray().map(ring =>
-              ring.getArray().map(p => [p.lng(), p.lat()])
-            )
-          )
-        };
-      }
+    // ---------------------------
+    // Data loading (§5.3): parallel fetch, inject identity props, build caches
+    // ---------------------------
+    async function fetchGeoJson(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+      return r.json();
+    }
 
+    // vineyard.json first; on 404 synthesize from blocks.json; null if neither.
+    async function loadManifest(customer) {
+      try {
+        const r = await fetch(manifestUrl(customer), { cache: "no-store" });
+        if (r.ok) {
+          const mf = await r.json();
+          if (mf && mf.schemaVersion === 2) return mf;
+        }
+      } catch (e) { console.warn("vineyard.json load issue:", e); }
+      try {
+        const r = await fetch(blocksIndexUrl(customer), { cache: "no-store" });
+        if (r.ok) {
+          const bj = await r.json();
+          return synthesizeManifestFromBlocks(bj, customer);
+        }
+      } catch (e) { console.warn("blocks.json load issue:", e); }
       return null;
+    }
+
+    async function loadAllData() {
+      blockGeoms = []; surveyGeoms = []; zoneGeoms = []; navGeoms = [];
+      const rxBySurvey = {};
+
+      const tasks = [];
+      if (manifest.boundaries) {
+        tasks.push({ kind: "boundaries", url: customerFileUrl(customerId, manifest.boundaries) });
+      }
+      (manifest.surveys || []).forEach(s => {
+        if (s.boundary) tasks.push({ kind: "surveyBoundary", surveyId: String(s.id), url: customerFileUrl(customerId, s.boundary) });
+        if (s.rx)       tasks.push({ kind: "rx",             surveyId: String(s.id), url: customerFileUrl(customerId, s.rx) });
+      });
+
+      const total = tasks.length;
+      let done = 0, failed = 0;
+      setStatus(`Loading 0/${total}…`);
+
+      // Parallel; one file failure must not abort the app.
+      const results = await Promise.all(tasks.map(async (t) => {
+        try {
+          const json = await fetchGeoJson(t.url);
+          done++; setStatus(`Loading ${done}/${total}…`);
+          return { t, json };
+        } catch (e) {
+          console.warn("File failed:", t.url, e);
+          failed++; done++; setStatus(`Loading ${done}/${total}…`);
+          return { t, json: null };
+        }
+      }));
+
+      // Boundaries first, so block matching is ready. Inject identity props BEFORE addGeoJson.
+      const featureNameToKey = {};
+      (manifest.blocks || []).forEach(b => { if (b.featureName) featureNameToKey[b.featureName] = b.key; });
+
+      const bres = results.find(r => r.t.kind === "boundaries" && r.json);
+      if (bres) {
+        (bres.json.features || []).forEach(f => {
+          if (!f || !f.geometry) return;
+          const nm = f.properties && f.properties.name;
+          let key = (nm != null && Object.prototype.hasOwnProperty.call(featureNameToKey, nm)) ? featureNameToKey[nm] : null;
+          if (key == null) {
+            // Unmatched feature name → synthesize a block entry so it still renders/labels.
+            key = nm != null ? String(nm) : ("block-" + (blockGeoms.length + 1));
+            if (!blockByKey[key]) {
+              const entry = { key, featureName: nm, displayName: nm != null ? String(nm) : key, numbers: [], areaHa: null, variety: "", notes: "" };
+              blockByKey[key] = entry;
+              manifest.blocks.push(entry);
+            }
+          }
+          f.properties = f.properties || {};
+          f.properties.blockKey = key;
+          blockGeoms.push({ key, geom: f.geometry });
+        });
+        blocksLayer.addGeoJson(bres.json);
+      }
+
+      // Survey boundaries + rx zones.
+      results.forEach(r => {
+        if (!r.json) return;
+        if (r.t.kind === "surveyBoundary") {
+          (r.json.features || []).forEach(f => {
+            if (!f || !f.geometry) return;
+            f.properties = f.properties || {};
+            f.properties.surveyId = r.t.surveyId;
+            surveyGeoms.push({ surveyId: r.t.surveyId, geom: f.geometry });
+          });
+          // Legacy: survey boundaries ARE the blocks (solid outline, tappable fill).
+          if (legacyMode) blocksLayer.addGeoJson(r.json);
+        } else if (r.t.kind === "rx") {
+          rxBySurvey[r.t.surveyId] = r.json.features || [];
+          (r.json.features || []).forEach(f => {
+            if (!f || !f.geometry) return;
+            f.properties = f.properties || {};
+            f.properties.surveyId = r.t.surveyId;
+            zoneGeoms.push({ zone: Number(f.properties.zone), surveyId: r.t.surveyId, geom: f.geometry });
+          });
+          zonesLayer.addGeoJson(r.json);
+        }
+      });
+
+      navGeoms = legacyMode
+        ? surveyGeoms.map(s => ({ key: s.surveyId, geom: s.geom }))
+        : blockGeoms.map(b => ({ key: b.key, geom: b.geom }));
+
+      // Spatial links (v2 only; legacy targets link to themselves).
+      if (legacyMode) {
+        blockSurveyIds = {};
+      } else {
+        const surveyRx = (manifest.surveys || []).map(s => ({ surveyId: String(s.id), features: rxBySurvey[String(s.id)] || [] }));
+        blockSurveyIds = computeBlockSurveyLinks(blockGeoms, surveyRx);
+      }
+
+      setStatus(failed > 0 ? `OK (${failed} file${failed > 1 ? "s" : ""} failed)` : "OK");
+    }
+
+    // ---------------------------
+    // Dropdown / labels / survey outlines
+    // ---------------------------
+    function populateDropdown() {
+      const sel = $("blockSelect");
+      sel.innerHTML = "";
+      const ph = document.createElement("option");
+      ph.value = "";
+      ph.textContent = "— Jump to block —";
+      sel.appendChild(ph);
+      targets.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = String(t.key);
+        let label = t.displayName;
+        if (t.variety) label += ` — ${t.variety}`;
+        if (t.areaHa != null) label += ` (${Number(t.areaHa).toFixed(1)} ha)`;
+        opt.textContent = label;
+        sel.appendChild(opt);
+      });
+      sel.value = "";
+      sel.addEventListener("change", () => {
+        const key = sel.value;
+        if (!key) return;
+        const t = targetByKey[key];
+        if (t) applySelection(t, { openCardFlag: true, fit: true, updateUrl: true });
+      });
+    }
+
+    function buildLabels() {
+      labelMarkers.forEach(m => m.setMap(null));
+      labelMarkers = [];
+      targets.forEach(t => {
+        const ng = navGeoms.find(g => String(g.key) === String(t.key));
+        if (!ng) return;
+        const text = t.variety ? `${t.displayName}\n${t.variety}` : t.displayName;
+        const m = new google.maps.Marker({
+          map,
+          position: geomCenter(ng.geom),
+          clickable: true,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+          label: { text, color: "#ffffff", fontSize: "13px", fontWeight: "700" }
+        });
+        m.addListener("click", () => applySelection(t, { openCardFlag: true, updateUrl: true }));
+        labelMarkers.push(m);
+      });
+    }
+
+    function buildSurveyOutlines() {
+      Object.values(surveyOutlines).forEach(arr => arr.forEach(pl => pl.setMap(null)));
+      surveyOutlines = {};
+      if (legacyMode) return; // legacy uses the solid blocksLayer outline instead
+      const dashSymbol = { path: "M 0,-1 0,1", strokeOpacity: 1, strokeColor: "#ffd400", strokeWeight: 2, scale: 3 };
+      surveyGeoms.forEach(sg => {
+        const sid = String(sg.surveyId);
+        const lines = ringsOf(sg.geom).map(ring => new google.maps.Polyline({
+          path: ring.map(c => ({ lat: c[1], lng: c[0] })),
+          strokeOpacity: 0,
+          icons: [{ icon: dashSymbol, offset: "0", repeat: "14px" }],
+          clickable: false,
+          zIndex: 2,
+          map: null
+        }));
+        surveyOutlines[sid] = (surveyOutlines[sid] || []).concat(lines);
+      });
+      refreshSurveyOutlines();
+    }
+
+    // Survey flight outlines: dashed, visible while active or "All zones".
+    function refreshSurveyOutlines() {
+      Object.keys(surveyOutlines).forEach(sid => {
+        const show = allZonesChecked || activeSurveyIds.has(String(sid));
+        surveyOutlines[sid].forEach(pl => pl.setMap(show ? map : null));
+      });
+    }
+
+    function updateLabelVisibility() {
+      if (!map) return;
+      const z = map.getZoom();
+      const show = (z != null) && z >= LABEL_MIN_ZOOM;
+      labelMarkers.forEach(m => m.setVisible(show));
+    }
+
+    // ---------------------------
+    // Fit / card / selection
+    // ---------------------------
+    function fitToTarget(target) {
+      const ng = navGeoms.find(g => String(g.key) === String(target.key));
+      if (!ng) return;
+      const b = new google.maps.LatLngBounds();
+      extendBoundsWithGeom(b, ng.geom);
+      if (!b.isEmpty()) map.fitBounds(b);
+    }
+
+    function fitWholeVineyard() {
+      const b = boundsOfGeoms(navGeoms.concat(surveyGeoms.map(s => ({ key: s.surveyId, geom: s.geom }))));
+      if (b) map.fitBounds(b);
+    }
+
+    function blockLabelText(target) {
+      return target.variety ? `${target.displayName} — ${target.variety}` : target.displayName;
+    }
+
+    function showCard(target) {
+      cardTarget = target;
+      $("cardTitle").textContent = blockLabelText(target);
+      const parts = [];
+      if (target.areaHa != null) parts.push(`${Number(target.areaHa).toFixed(1)} ha`);
+      const tokens = (target.surveyIds || []).map(id => (surveyById[String(id)] || {}).token).filter(Boolean);
+      parts.push(tokens.length ? `NDVI coverage: ${tokens.join(", ")}` : "No NDVI survey yet");
+      $("cardMeta").textContent = parts.join(" · ");
+      $("infoCard").style.display = "block";
+    }
+
+    function hideCard() {
+      $("infoCard").style.display = "none";
+      cardTarget = null;
+    }
+
+    function syncDropdown(key) {
+      const sel = $("blockSelect");
+      if (sel && sel.value !== String(key)) sel.value = String(key);
+    }
+
+    // Last event wins. isGps selections never open a card, change the URL, or save context.
+    function applySelection(target, opts = {}) {
+      const { openCardFlag = false, fit = false, updateUrl = false, isGps = false } = opts;
+      if (!target) return;
+      activeSurveyIds = new Set((target.surveyIds || []).map(String));
+      refreshZones();
+      refreshSurveyOutlines();
+      if (fit) fitToTarget(target);
+      if (openCardFlag) showCard(target);
+      if (updateUrl) setQueryParam("block", target.key);
+      if (!isGps) {
+        syncDropdown(target.key);
+        saveLastContext(customerId, target.key);
+      }
+      if (gpsMarker) highlightZoneAt(gpsMarker.getPosition(), { forceUpdate: true });
+    }
+
+    function resolveTargetAt(x, y) {
+      for (const ng of navGeoms) {
+        if (pointInGeom(x, y, ng.geom)) return targetByKey[ng.key] || null;
+      }
+      return null;
+    }
+
+    function onMapTap(latLng) {
+      const t = resolveTargetAt(latLng.lng(), latLng.lat());
+      if (!t) return;
+      applySelection(t, { openCardFlag: true, updateUrl: true });
+    }
+
+    // ---------------------------
+    // GPS status readout (§5.2). Card never opens on GPS auto-switch.
+    // ---------------------------
+    function updateGpsStatus(latLng) {
+      const x = latLng.lng(), y = latLng.lat();
+
+      // Zone pill: hit-test ALL zones (respecting R/O/G filters), regardless of visibility.
+      highlightZoneAt(latLng);
+
+      // Block readout: PIP over blocks; fall back to survey boundaries; else outside.
+      let label = "Outside blocks";
+      let detectedKey = null;
+      const ng = navGeoms.find(g => pointInGeom(x, y, g.geom));
+      if (ng) {
+        detectedKey = ng.key;
+        const t = targetByKey[ng.key];
+        label = t ? blockLabelText(t) : String(ng.key);
+      } else if (!legacyMode) {
+        const sg = surveyGeoms.find(g => pointInGeom(x, y, g.geom));
+        if (sg) {
+          const s = surveyById[String(sg.surveyId)];
+          label = (s ? s.displayName : String(sg.surveyId)) + " (survey)";
+        }
+      }
+      $("blockLabel").textContent = label;
+      syncCollapsedSummary();
+
+      // Switch active zones only when the detected block CHANGES (no card while walking).
+      if (detectedKey !== null && detectedKey !== lastGpsBlockKey) {
+        lastGpsBlockKey = detectedKey;
+        const t = targetByKey[detectedKey];
+        if (t) applySelection(t, { isGps: true });
+      } else if (detectedKey === null) {
+        lastGpsBlockKey = null;
+      }
     }
 
     // ---------------------------
@@ -859,23 +1313,26 @@
     // ---------------------------
     // Styling
     // ---------------------------
+    // Zone visibility (§5.3): visible = zoneEnabled(z) && (allZones || active survey).
     function styleZones(feature) {
       const z = Number(feature.getProperty("zone"));
-      const enabled = zoneEnabled(z);
-      const isHighlighted = (highlightedZone != null && z === highlightedZone);
+      const sid = String(feature.getProperty("surveyId"));
+      const visible = zoneEnabled(z) && (allZonesChecked || activeSurveyIds.has(sid));
+      const isHighlighted = visible && (highlightedZone != null && z === highlightedZone);
 
       return {
-        visible: enabled,
+        visible,
         fillColor: zoneToColor(z),
         fillOpacity: isHighlighted ? 0.75 : 0.55,
         strokeColor: isHighlighted ? "#1a73e8" : "#000000",
         strokeOpacity: isHighlighted ? 1.0 : 0.6,
-        strokeWeight: isHighlighted ? 2.5 : 0.6
+        strokeWeight: isHighlighted ? 2.5 : 0.6,
+        zIndex: isHighlighted ? 3 : 1
       };
     }
 
     function refreshZones() {
-      zonesLayer.setStyle(styleZones);
+      if (zonesLayer) zonesLayer.setStyle(styleZones);
     }
 
     // ---------------------------
@@ -886,27 +1343,25 @@
 
       customerId = getCustomerIdFromPathOrNull();
 
-      // If root or reserved path => show instructions page
+      // Root or reserved path => landing / instructions.
       if (!customerId) {
         showLanding(null);
         return;
       }
 
-      // Try to load blocks.json first. If missing => show instructions with error.
-      try {
-        const test = await fetch(blocksIndexUrl(customerId), { cache: "no-store" });
-        if (!test.ok) throw new Error(`HTTP ${test.status}`);
-        await test.json();
-      } catch (e) {
-        console.warn("Unknown customer:", customerId, e);
+      // Load the v2 manifest (or synthesize from blocks.json). Unknown customer => landing.
+      manifest = await loadManifest(customerId);
+      if (!manifest) {
+        console.warn("Unknown customer:", customerId);
         showLanding(location.pathname);
         return;
       }
+      legacyMode = !manifest.boundaries;
 
-      // Customer is valid, show map UI
       showApp();
 
-      $("customerLabel").textContent = customerId;
+      $("customerLabel").textContent = manifest.customer || customerId;
+      $("blockLabel").textContent = "—";
       syncCollapsedSummary();
       renderLandingResume();
       $("followLabel").textContent = "ON";
@@ -914,133 +1369,70 @@
       $("accLabel").textContent = "—";
       setZonePill(undefined);
 
+      // Lookups from the manifest.
+      blockByKey = {}; surveyById = {};
+      (manifest.blocks || []).forEach(b => { blockByKey[b.key] = b; });
+      (manifest.surveys || []).forEach(s => { surveyById[String(s.id)] = s; });
+
       map = new google.maps.Map($("map"), {
         mapTypeId: "satellite",
         center: { lat: -33.8, lng: 115.08 },
-        zoom: 17
+        zoom: 16
       });
 
-      boundaryLayer = new google.maps.Data({ map });
+      blocksLayer = new google.maps.Data({ map });
       zonesLayer = new google.maps.Data({ map });
 
-      boundaryLayer.setStyle({
+      // Block outlines: white/cyan stroke, near-zero fill (satellite stays visible).
+      blocksLayer.setStyle({
         strokeColor: "#00ffff",
         strokeWeight: 2,
+        strokeOpacity: 0.95,
         fillColor: "#00ffff",
-        fillOpacity: 0.06
+        fillOpacity: 0.05
       });
-
       zonesLayer.setStyle(styleZones);
 
-      // Filters: restyle, then re-check current GPS
+      // Tapping a block (or a zone drawn over it) selects that block.
+      blocksLayer.addListener("click", (ev) => { if (ev.latLng) onMapTap(ev.latLng); });
+      zonesLayer.addListener("click",  (ev) => { if (ev.latLng) onMapTap(ev.latLng); });
+
+      // R/O/G filters: restyle + re-check GPS zone.
       ["z1","z2","z3"].forEach(id => $(id).addEventListener("change", () => {
         refreshZones();
         if (gpsMarker) highlightZoneAt(gpsMarker.getPosition(), { forceUpdate: true });
       }));
-
-      // Load blocks list
-      setStatus("Loading blocks…");
-      try {
-        blocksConfig = await fetchJson(blocksIndexUrl(customerId));
-      } catch (e) {
-        console.error(e);
-        setStatus("ERROR");
-        showLanding(location.pathname);
-        return;
-      }
-
-      populateBlocksDropdown(blocksConfig);
-
-      const qBlock = getQueryParam("block");
-      const defaultBlock = blocksConfig.defaultBlock || (blocksConfig.blocks?.[0]?.id);
-      const initial = (qBlock && hasBlock(qBlock)) ? qBlock : defaultBlock;
-
-      if (!initial) {
-        setStatus("ERROR");
-        alert("blocks.json contains no blocks.");
-        return;
-      }
-
-      await loadBlock(initial);
-    }
-
-    async function fetchJson(url) {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-      return r.json();
-    }
-
-    function hasBlock(id) {
-      return (blocksConfig?.blocks || []).some(b => String(b.id) === String(id));
-    }
-
-    function populateBlocksDropdown(cfg) {
-      const sel = $("blockSelect");
-      sel.innerHTML = "";
-
-      for (const b of (cfg.blocks || [])) {
-        const opt = document.createElement("option");
-        opt.value = String(b.id);
-        opt.textContent = b.name ? b.name : `Block ${b.id}`;
-        sel.appendChild(opt);
-      }
-
-      sel.addEventListener("change", async () => {
-        await loadBlock(sel.value);
-      });
-    }
-
-    // ---------------------------
-    // Block loading
-    // ---------------------------
-    async function loadBlock(blockId) {
-      currentBlockId = String(blockId);
-      $("blockLabel").textContent = currentBlockId;
-      syncCollapsedSummary();
-      setQueryParam("block", currentBlockId);
-
-      const sel = $("blockSelect");
-      if (sel.value !== currentBlockId) sel.value = currentBlockId;
-
-      // Clear old features/caches
-      boundaryLayer.forEach(f => boundaryLayer.remove(f));
-      zonesLayer.forEach(f => zonesLayer.remove(f));
-      zoneGeoms = [];
-      highlightedZone = null;
-      setZonePill(undefined);
-
-      const paths = blockDataPaths(customerId, currentBlockId);
-      setStatus("Loading block data…");
-
-      try {
-        await loadGeoJsonIntoLayer(boundaryLayer, paths.boundary);
-        await loadGeoJsonIntoLayer(zonesLayer, paths.rx);
-
-        const b1 = computeLayerBounds(boundaryLayer);
-        const b2 = computeLayerBounds(zonesLayer);
-        const bounds = b1 || b2;
-        if (bounds) map.fitBounds(bounds);
-
-        // Build hit-test cache (zone number + geometry)
-        zonesLayer.forEach(f => {
-          const z = Number(f.getProperty("zone"));
-          const geo = geometryToGeoJson(f.getGeometry());
-          zoneGeoms.push({ zone: z, geo });
-        });
-
+      // "All zones": force every survey visible (overrides active-set while checked).
+      $("zAll").addEventListener("change", () => {
+        allZonesChecked = $("zAll").checked;
         refreshZones();
-        if (gpsMarker) highlightZoneAt(gpsMarker.getPosition(), { forceUpdate: true });
+        refreshSurveyOutlines();
+      });
 
-        setStatus("OK");
-        saveLastContext(customerId, currentBlockId);
-      } catch (e) {
-        console.error(e);
-        setStatus("ERROR");
-        alert(
-          `Failed to load block ${currentBlockId}.\n\n` +
-          `Expected:\n${paths.boundary}\n${paths.rx}\n\n` +
-          `Check the file paths exist and are valid GeoJSON.`
-        );
+      map.addListener("zoom_changed", updateLabelVisibility);
+
+      // Card buttons.
+      $("cardZoomBtn").addEventListener("click", () => { if (cardTarget) fitToTarget(cardTarget); });
+      $("cardCloseBtn").addEventListener("click", hideCard);
+
+      // Fetch all geometry in parallel, inject identity props, build hit-test caches + links.
+      await loadAllData();
+
+      // Build navigable units + UI.
+      targets = buildTargets(manifest, blockSurveyIds);
+      targetByKey = {}; targets.forEach(t => { targetByKey[t.key] = t; });
+      populateDropdown();
+      buildLabels();
+      buildSurveyOutlines();
+      updateLabelVisibility();
+
+      // Deep link (?block=block-key in v2, or survey id in legacy). Else fit whole vineyard.
+      const initialKey = matchTargetKey(getQueryParam("block"), targets);
+      if (initialKey != null) {
+        applySelection(targetByKey[initialKey], { fit: true, updateUrl: true });
+      } else {
+        fitWholeVineyard();
+        saveLastContext(customerId, null);
       }
     }
 
@@ -1109,7 +1501,7 @@
           }
 
           if (followMode) map.panTo(ll);
-          highlightZoneAt(ll);
+          updateGpsStatus(ll);
         },
         (err) => {
           console.error(err);
@@ -1128,6 +1520,8 @@
       $("accLabel").textContent = "—";
 
       highlightedZone = null;
+      lastGpsBlockKey = undefined;
+      $("blockLabel").textContent = "—";
       setZonePill(undefined);
       refreshZones();
 
@@ -1143,7 +1537,7 @@
       let foundZone = null;
       for (const z of zoneGeoms) {
         if (!zoneEnabled(z.zone)) continue;
-        if (pointInGeom(x, y, z.geo)) { foundZone = z.zone; break; }
+        if (pointInGeom(x, y, z.geom)) { foundZone = z.zone; break; }
       }
 
       const newZone = (foundZone != null) ? foundZone : null;
