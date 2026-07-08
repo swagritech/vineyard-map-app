@@ -13,6 +13,10 @@ Use this protocol for all Pix4D exports so imports can run with zero manual rena
 > **Block IDs follow the real block number.** A single block `B5` imports as block `5`
 > (folder `blocks/5`, shown as "5" in the app status box). Combined blocks use their first
 > number as the id (e.g. `B3-4` -> id `3`), falling back to the next free id on a clash.
+>
+> **Display names are generated automatically** (shown in the block dropdown), preserving the
+> block order from the file: `B5` -> "Block 5", `B3-4` -> "Blocks 3 & 4",
+> `B2-1-12-11-10` -> "Blocks 2, 1, 12, 11 & 10". A strict-protocol label still overrides this.
 
 ## 1) Zip Structure
 

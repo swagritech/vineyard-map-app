@@ -102,14 +102,38 @@ function Get-TokenSortKey([string]$token) {
   return ($ints | ForEach-Object { "{0:D4}" -f $_ }) -join "-"
 }
 
+function Format-BlockName([string]$token) {
+  # Turns a token into a friendly display name, preserving the block order from
+  # the source file: "B5" -> "Block 5", "B3-4" -> "Blocks 3 & 4",
+  # "B2-1-12-11-10" -> "Blocks 2, 1, 12, 11 & 10".
+  $parts = @(
+    $token.TrimStart('B','b').Split('-') |
+      Where-Object { $_ -ne '' } |
+      ForEach-Object {
+        $n = 0
+        if ([int]::TryParse($_, [ref]$n)) { [string]$n } else { $_ }
+      }
+  )
+  if ($parts.Count -le 1) { return "Block $($parts -join '')" }
+  $head = ($parts[0..($parts.Count - 2)]) -join ", "
+  $last = $parts[$parts.Count - 1]
+  return "Blocks $head & $last"
+}
+
 function Normalize-DisplayName([string]$label, [string]$token) {
-  if ([string]::IsNullOrWhiteSpace($label)) { return $token }
-  $spaced = $label -replace "-", " "
-  return $spaced.Trim()
+  # An explicit label (strict protocol) wins; otherwise build a friendly name
+  # from the block numbers in the token.
+  if (-not [string]::IsNullOrWhiteSpace($label)) {
+    return ($label -replace "-", " ").Trim()
+  }
+  return Format-BlockName $token
 }
 
 function Save-Json($obj, [string]$path) {
   $json = $obj | ConvertTo-Json -Depth 100
+  # ConvertTo-Json escapes &, <, >, ' as \uXXXX. These are safe as literals in
+  # JSON, so unescape them to keep display names (e.g. "Blocks 3 & 4") readable.
+  $json = $json -replace '\\u0026', '&' -replace '\\u003c', '<' -replace '\\u003e', '>' -replace '\\u0027', "'"
   [System.IO.File]::WriteAllText($path, $json + [Environment]::NewLine)
 }
 
