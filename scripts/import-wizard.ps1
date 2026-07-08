@@ -490,6 +490,29 @@ function Invoke-PublishStep([string]$Customer, [string]$FlowLabel) {
 }
 
 function Invoke-GapInterviewAndPublish([string]$Customer, [string]$FlowLabel) {
+  # A missing boundaries file is itself a gap: NDVI flights are often combined
+  # groupings, but the drawn boundaries are the per-block truth - without them
+  # the map has no per-block names/varieties and GPS can't announce crossings.
+  $customerRoot = Join-Path $RepoRoot "customers\$Customer"
+  $boundariesPresent = @(
+    Get-ChildItem -Path $customerRoot -File -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -imatch '(^|_)boundaries\.geojson$' }
+  )
+  if ($boundariesPresent.Count -eq 0) {
+    Write-Host ""
+    Write-Host ("Gap: no block boundaries file is loaded for {0}." -f $Customer) -ForegroundColor Yellow
+    Write-Host "The map will show NDVI flight areas only - no per-block names, varieties, or GPS block announcements."
+    $loadNow = Read-YesNo "Load a boundaries GeoJSON now? [Y/n]"
+    if ($loadNow) {
+      Invoke-BoundariesLoad -Customer $Customer
+      if (-not $script:BoundariesLoadOk) {
+        Write-Host "You can load it any time: wizard option 2." -ForegroundColor Yellow
+      }
+    } else {
+      Write-Host "You can load it any time: wizard option 2." -ForegroundColor Yellow
+    }
+  }
+
   Invoke-VarietyInterview -Customer $Customer
   Invoke-ZoneScan -Customer $Customer
   Invoke-MissingPairScan -Customer $Customer
@@ -552,16 +575,20 @@ function Invoke-Flow1 {
 # ---------------------------------------------------------------------------
 # §5.2 Flow 2 - Update the boundaries file.
 # ---------------------------------------------------------------------------
-function Invoke-Flow2 {
-  $customer = Select-Customer
-  if ([string]::IsNullOrWhiteSpace($customer)) { return }
-
-  $customerRoot = Join-Path $RepoRoot "customers\$customer"
+# Shared boundaries loader: file pick -> preview -> replace confirm -> copy to
+# canonical name -> duplicate cleanup -> manifest sync. Used by Flow 2 and by
+# the boundaries gap check inside every gap interview.
+# IMPORTANT: call as a bare statement and read $script:BoundariesLoadOk after -
+# capturing the call would also capture the nested importer's stdout (same
+# trap as Invoke-Importer).
+function Invoke-BoundariesLoad([string]$Customer) {
+  $script:BoundariesLoadOk = $false
+  $customerRoot = Join-Path $RepoRoot "customers\$Customer"
   $downloads = Join-Path $env:USERPROFILE "Downloads"
   $srcPath = Select-FileViaDialogOrStdin -Title "Choose the boundaries GeoJSON" -Filter "GeoJSON (*.geojson)|*.geojson" `
     -InitialDirectory $downloads -StdinPrompt "Path to the boundaries GeoJSON (Enter to cancel)"
   if ([string]::IsNullOrWhiteSpace($srcPath)) {
-    Write-Host "Cancelled. Back to the main menu." -ForegroundColor Yellow
+    Write-Host "Cancelled - no boundaries loaded." -ForegroundColor Yellow
     return
   }
   if (-not (Test-Path $srcPath)) {
@@ -581,7 +608,7 @@ function Invoke-Flow2 {
   Write-Host ""
   Write-Host ("Found {0} block boundaries. Names: {1}" -f $newFeatures.Count, $namesText)
 
-  $canonicalPath = Join-Path $customerRoot ("{0}_Boundaries.geojson" -f $customer)
+  $canonicalPath = Join-Path $customerRoot ("{0}_Boundaries.geojson" -f $Customer)
   if (Test-Path $canonicalPath) {
     $existingJson = Get-Content -Raw $canonicalPath | ConvertFrom-Json
     $existingCount = @($existingJson.features).Count
@@ -590,7 +617,7 @@ function Invoke-Flow2 {
     Write-Host ("  New file: {0} features (modified {1})" -f $newFeatures.Count, $newInfo.LastWriteTime)
     Write-Host ("  Current:  {0} features (modified {1})" -f $existingCount, $curInfo.LastWriteTime)
 
-    $replace = Read-YesNo ("Replace the current boundaries for {0}? [Y/n]" -f $customer)
+    $replace = Read-YesNo ("Replace the current boundaries for {0}? [Y/n]" -f $Customer)
     if (-not $replace) {
       Write-Host "Cancelled. Nothing changed." -ForegroundColor Yellow
       return
@@ -617,12 +644,21 @@ function Invoke-Flow2 {
   }
 
   Write-Host ""
-  Write-Host ("Syncing manifest for '{0}'..." -f $customer) -ForegroundColor Green
-  Invoke-Importer -ImporterArgs @("-SyncManifest", "-Customer", $customer, "-RepoRoot", $RepoRoot)
+  Write-Host ("Syncing manifest for '{0}'..." -f $Customer) -ForegroundColor Green
+  Invoke-Importer -ImporterArgs @("-SyncManifest", "-Customer", $Customer, "-RepoRoot", $RepoRoot)
   if ($script:LastImporterExitCode -ne 0) {
     Write-Host "Manifest sync failed - see output above." -ForegroundColor Red
     return
   }
+  $script:BoundariesLoadOk = $true
+}
+
+function Invoke-Flow2 {
+  $customer = Select-Customer
+  if ([string]::IsNullOrWhiteSpace($customer)) { return }
+
+  Invoke-BoundariesLoad -Customer $customer
+  if (-not $script:BoundariesLoadOk) { return }
 
   Invoke-GapInterviewAndPublish -Customer $customer -FlowLabel "Flow2"
 }

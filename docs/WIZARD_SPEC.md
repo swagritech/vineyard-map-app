@@ -142,6 +142,27 @@ Print a one-line status for each; do not block unless noted:
 - Whether `$RepoRoot` is a git work tree (`git rev-parse --is-inside-work-tree`). Not a
   repo (e.g. fixture) → publishing hidden entirely.
 
+### 6.0b Boundaries presence check (first step of every gap interview)
+
+A missing boundaries file is itself a gap: NDVI flights are often combined groupings,
+but the drawn boundaries are the per-block truth — without them the map has no
+per-block names/varieties and GPS can't announce block crossings. If no
+`(^|_)boundaries.geojson` (case-insensitive) exists at the customer top level:
+
+```
+Gap: no block boundaries file is loaded for <C>.
+The map will show NDVI flight areas only - no per-block names, varieties, or GPS block announcements.
+Load a boundaries GeoJSON now? [Y/n]:
+```
+
+Y → run the shared boundaries loader (the same pick → preview → copy → dedupe → re-sync
+routine Flow 2 uses; factored as `Invoke-BoundariesLoad`, result via
+`$script:BoundariesLoadOk` — never capture the call, it would swallow the nested
+importer's stdout). n or a cancelled/failed load → yellow
+`You can load it any time: wizard option 2.` and the interview continues regardless.
+This makes the one-sitting flow work: import a zip for a new vineyard → offered the
+boundaries file → variety interview → publish.
+
 ### 6.1 Variety interview (the core ask)
 
 After the sync, read `customers\<C>\vineyard.json`. If `boundaries` is null, skip 6.1.
