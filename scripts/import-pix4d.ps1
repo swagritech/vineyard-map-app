@@ -73,6 +73,19 @@ function Parse-ExportName([string]$fileStem) {
     }
   }
 
+  # 2b) Native Pix4D wrapper around a vineyard's own block code, e.g.
+  #     "NDVI - CHRBK04 3 zones_Rx" -> token "CHRBK04"
+  #     (the Block-number form above is tried first, so Fishbone-style names
+  #     never land here)
+  $pix4dCode = [regex]::Match($fileStem, '^NDVI\s*-?\s*(?<code>.+?)\s*\d+\s*zones?_(?<kind>Boundary|Rx)$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if ($pix4dCode.Success) {
+    return [pscustomobject]@{
+      Token = $pix4dCode.Groups["code"].Value.Trim()
+      Label = ""
+      Kind  = $pix4dCode.Groups["kind"].Value
+    }
+  }
+
   # 3) Legacy Pix4D names, e.g.
   #    "NDVI 101 102 104 307 Zones3_Rx"
   #    "NDVI 302 Zone3_Boundary"

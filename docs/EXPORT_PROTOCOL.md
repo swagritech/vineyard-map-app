@@ -28,9 +28,11 @@ Use this protocol for all Pix4D exports so imports can run with zero manual rena
 > - Native Pix4D: `NDVI - Block 5 3 zone_Boundary.shp`, `NDVI - Block 3&4 3 zone_Rx.shp`,
 >   `NDVI - Blocks 2 1 12 11 10 3zone_Boundary.shp`
 > - Legacy Pix4D: `NDVI 101 102 Zones3_Rx.shp`
-> - Anything else: any `<name>_Boundary.shp` + `<name>_Rx.shp` pair imports too (e.g. a
->   vineyard's own block codes like `CHRBK04 - Cabernet_Rx.shp`) — block ids fall back to
->   sequential and the name is used as-is. The dry-run preview shows the mapping first.
+> - Native Pix4D around a block code: `NDVI - CHRBK04 3 zones_Rx.shp` -> block `CHRBK04`
+>   (the code is unwrapped and used as the block name)
+> - Anything else: any `<name>_Boundary.shp` + `<name>_Rx.shp` pair imports too — block ids
+>   fall back to sequential and the name is used as-is. The dry-run preview shows the
+>   mapping first.
 >
 > **Block IDs follow the real block number.** A single block `B5` imports as block `5`
 > (folder `blocks/5`, shown as "5" in the app status box). Combined blocks use their first
