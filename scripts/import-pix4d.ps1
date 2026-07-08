@@ -114,12 +114,21 @@ function Parse-ExportName([string]$fileStem) {
 }
 
 function Get-DesiredIdFromToken([string]$token) {
-  # Uses the first block number in the token as the app/folder id, so a single
-  # block like "B5" imports as block 5 rather than a sequential counter.
-  # Returns 0 when the token has no usable leading number.
+  # Uses the real block number embedded in the token as the app/folder id:
+  #   "B5"      -> 5   (leading number of a B-token)
+  #   "B3-4"    -> 3   (first number of a combined token)
+  #   "CHRBK04" -> 4   (trailing number of a customer block code)
+  #   "SBRKB09" -> 9
+  # Returns 0 when the token has no usable number (id falls back to sequential;
+  # collisions also fall back - the dry-run preview always shows the outcome).
   $first = ($token.TrimStart('B','b') -split '-')[0]
   $n = 0
   if ([int]::TryParse($first, [ref]$n) -and $n -gt 0) { return $n }
+  $tail = [regex]::Match($token, '(\d+)\s*$')
+  if ($tail.Success) {
+    $n = [int]$tail.Groups[1].Value
+    if ($n -gt 0) { return $n }
+  }
   return 0
 }
 
