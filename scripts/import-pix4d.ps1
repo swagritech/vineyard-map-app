@@ -85,6 +85,18 @@ function Parse-ExportName([string]$fileStem) {
     }
   }
 
+  # 4) Generic fallback: pair ANY "<stem>_Boundary" / "<stem>_Rx" by exact stem,
+  #    so vineyards with their own block codes (e.g. "CHRBK04 - Cabernet") still
+  #    import. Ids fall back to sequential; the raw stem becomes the name.
+  $generic = [regex]::Match($fileStem, '^(?<token>.+?)\s*_(?<kind>Boundary|Rx)$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if ($generic.Success) {
+    return [pscustomobject]@{
+      Token = $generic.Groups["token"].Value.Trim()
+      Label = ""
+      Kind  = $generic.Groups["kind"].Value
+    }
+  }
+
   return $null
 }
 
@@ -99,22 +111,27 @@ function Get-DesiredIdFromToken([string]$token) {
 }
 
 function Get-TokenSortKey([string]$token) {
-  $ints = $token.TrimStart("B").Split("-") | ForEach-Object { [int]$_ }
-  return ($ints | ForEach-Object { "{0:D4}" -f $_ }) -join "-"
+  # Numeric B-tokens sort by zero-padded numbers; non-numeric tokens (customer
+  # block codes) sort as their own text.
+  $keys = @()
+  foreach ($part in @($token.TrimStart('B','b').Split('-') | Where-Object { $_ -ne '' })) {
+    $n = 0
+    if ([int]::TryParse($part, [ref]$n)) { $keys += ("{0:D4}" -f $n) } else { return $token }
+  }
+  return ($keys -join "-")
 }
 
 function Format-BlockName([string]$token) {
-  # Turns a token into a friendly display name, preserving the block order from
-  # the source file: "B5" -> "Block 5", "B3-4" -> "Blocks 3 & 4",
-  # "B2-1-12-11-10" -> "Blocks 2, 1, 12, 11 & 10".
-  $parts = @(
-    $token.TrimStart('B','b').Split('-') |
-      Where-Object { $_ -ne '' } |
-      ForEach-Object {
-        $n = 0
-        if ([int]::TryParse($_, [ref]$n)) { [string]$n } else { $_ }
-      }
-  )
+  # Turns a numeric token into a friendly display name, preserving the block
+  # order from the source file: "B5" -> "Block 5", "B3-4" -> "Blocks 3 & 4",
+  # "B2-1-12-11-10" -> "Blocks 2, 1, 12, 11 & 10". Non-numeric tokens
+  # (customer block codes like "CHRBK04 - Cabernet") display as-is.
+  $parts = @($token.TrimStart('B','b').Split('-') | Where-Object { $_ -ne '' })
+  foreach ($p in $parts) {
+    $n = 0
+    if (-not [int]::TryParse($p, [ref]$n)) { return $token }
+  }
+  $parts = @($parts | ForEach-Object { [string][int]$_ })
   if ($parts.Count -le 1) { return "Block $($parts -join '')" }
   $head = ($parts[0..($parts.Count - 2)]) -join ", "
   $last = $parts[$parts.Count - 1]
@@ -499,30 +516,49 @@ if (-not $DryRun) {
         $featureName = [string]$f.properties.name
       }
 
-      # "Block <key> [<variety words>] - <area> ha". Key allows a letter suffix
-      # ("5b") and combined forms ("4/5"). Text between key and dash is the
-      # variety as typed in the drawing tool; attributes.json can override it.
-      $m = [regex]::Match($featureName, '^Block\s+(?<key>\d+[A-Za-z]?(?:\s*[/&,-]\s*\d+[A-Za-z]?)*)\s*(?<label>[^-]*?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-      if ($m.Success) {
-        $key = ($m.Groups['key'].Value -replace '\s+', '')
-        $parsedVariety = $m.Groups['label'].Value.Trim()
-        $areaHa = [double]::Parse($m.Groups['area'].Value, [System.Globalization.CultureInfo]::InvariantCulture)
-        $sep = [char[]]@('/', [char]0x26, ',', '-')
-        $numbers = @(
-          $key.Split($sep, [System.StringSplitOptions]::RemoveEmptyEntries) |
-            ForEach-Object {
-              $nm = [regex]::Match($_, '^\d+')
-              if ($nm.Success) { [int]$nm.Value }
-            }
-        )
+      # Block names as typed in the drawing tool. Vineyards label differently,
+      # so patterns are tried in order (first match wins); anything unmatched
+      # still becomes a block under its raw name (never drop a feature):
+      #   P1  "Block 5 Cab Sauv - 1.228 ha"        Block-number convention
+      #   P2  "CHRBK04 - Chardonnay - 1.884 ha"    customer block codes
+      #   P3  "North Paddock - 2.1 ha"             any name + area, no variety
+      $key = $featureName
+      $parsedVariety = ""
+      $areaHa = $null
+      $numbers = @()
+      $displayName = $featureName
+      $patternMatched = $false
+
+      $p1 = [regex]::Match($featureName, '^Block\s+(?<key>\d+[A-Za-z]?(?:\s*[/&,-]\s*\d+[A-Za-z]?)*)\s*(?<label>[^-]*?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+      if ($p1.Success) {
+        $key = ($p1.Groups['key'].Value -replace '\s+', '')
+        $parsedVariety = $p1.Groups['label'].Value.Trim()
+        $areaHa = [double]::Parse($p1.Groups['area'].Value, [System.Globalization.CultureInfo]::InvariantCulture)
         $displayName = "Block " + $key
+        $patternMatched = $true
       } else {
-        # Never drop a feature: emit it with the raw name as its key.
-        $key = $featureName
-        $parsedVariety = ""
-        $areaHa = $null
-        $numbers = @()
-        $displayName = $featureName
+        $p2 = [regex]::Match($featureName, '^(?<key>[A-Za-z0-9/&_.]+)\s*-\s*(?<label>.+?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if ($p2.Success) {
+          $key = $p2.Groups['key'].Value.Trim()
+          $parsedVariety = $p2.Groups['label'].Value.Trim()
+          $areaHa = [double]::Parse($p2.Groups['area'].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+          $displayName = $key
+          $patternMatched = $true
+        } else {
+          $p3 = [regex]::Match($featureName, '^(?<key>.+?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+          if ($p3.Success) {
+            $key = $p3.Groups['key'].Value.Trim()
+            $areaHa = [double]::Parse($p3.Groups['area'].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+            $displayName = $key
+            $patternMatched = $true
+          }
+        }
+      }
+
+      if ($patternMatched) {
+        # Digit runs in the key, for display/sorting only ("4/5" -> 4,5;
+        # "CHRBK04" -> 4). Raw-name fallbacks get none (they would be noise).
+        $numbers = @([regex]::Matches($key, '\d+') | ForEach-Object { [int]$_.Value })
       }
 
       $block = [ordered]@{

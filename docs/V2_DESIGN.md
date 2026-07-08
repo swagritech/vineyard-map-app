@@ -168,15 +168,18 @@ Rules:
 - `blocks[].featureName` is the EXACT `name` property of the corresponding feature in the
   boundaries geojson. The app matches features to manifest entries by this exact string —
   the app never parses feature names itself.
-- `blocks[].key`, `variety` and `numbers` come from parsing the feature name with
-  (case-insensitive):
-  `^Block\s+(?<key>\d+[A-Za-z]?(?:\s*[/&,-]\s*\d+[A-Za-z]?)*)\s*(?<label>[^-]*?)\s*-\s*(?<area>[\d.]+)\s*ha\s*$`
-  Handles `Block 5 Cab Sauv - 1.228 ha` (variety in name — Sean's normal workflow),
-  `Block 5b Malbec - 0.082 ha` (letter-suffix keys), and `Block 4/5 - 1.929 ha`
-  (combined, no variety). `label` = parsed variety; `numbers` takes the leading integer
-  of each key part (display/sorting only). `displayName` = `"Block " + key`.
-  **If a feature name does not match the regex, still emit a block entry**: key = full name,
-  numbers = [], areaHa = null, displayName = full name. Never drop features.
+- `blocks[].key`, `variety`, `areaHa` and `numbers` come from parsing the feature name
+  through an ordered pattern cascade (case-insensitive, first match wins) — vineyards
+  label blocks differently and all of these are real:
+  1. `Block 5 Cab Sauv - 1.228 ha` / `Block 5b Malbec` / `Block 4/5 - 1.929 ha`
+     (Block-number convention) → key `5`/`5b`/`4/5`, displayName `"Block " + key`.
+  2. `CHRBK04 - Chardonnay - 1.884 ha` (customer block codes, verified from a real
+     vineyard 2026-07-08) → key/displayName `CHRBK04`, variety = middle segment.
+  3. `North Paddock - 2.1 ha` (any name + area) → key/displayName = the name, no variety.
+  `numbers` = the digit runs in the key (`4/5`→[4,5], `CHRBK04`→[4]) — display/sorting
+  ONLY, never joins (§4.6).
+  **If no pattern matches, still emit a block entry**: key = full name, numbers = [],
+  areaHa = null, displayName = full name. Never drop features.
 - `surveys[]` is derived from the same data as `blocks.json` (id, sourceToken); `numbers`
   parses the token (`B308-103-801` → [308, 103, 801]); `displayName` uses the existing
   `Format-BlockName` friendly-name function.
