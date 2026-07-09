@@ -1,4 +1,4 @@
-const CACHE_NAME = "vineyard-maps-v2";
+const CACHE_NAME = "vineyard-maps-v3";
 
 // Only cache your app shell (NOT Google Maps tiles/scripts, NOT customer data).
 // Every path here MUST exist on disk, or cache.addAll() rejects and the SW never installs.

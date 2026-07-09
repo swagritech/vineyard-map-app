@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>SwagriTech Vineyard Maps</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.webmanifest">
@@ -20,58 +20,204 @@
     body { margin: 0; font-family: "Roboto", Arial, sans-serif; background: #f7f7f7; }
     #map { height: 100vh; width: 100%; display:none; }
 
+    /* ---- Field Dock (status bar redesign 1A): bottom sheet ---- */
     .controls {
-      position: absolute;
-      top: 10px; left: 10px;
-      background: white;
-      padding: 10px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-      z-index: 10;
-      min-width: 320px;
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      z-index: 15;
+      background: var(--swat-paper);
+      border-radius: 26px 26px 0 0;
+      box-shadow: 0 -10px 34px rgba(29,35,28,0.26);
+      padding: 9px 16px max(22px, env(safe-area-inset-bottom));
       user-select: none;
-      display:none;
+      display: none;              /* showApp() flips to block */
+      color: var(--swat-ink);
+    }
+    .controls.is-collapsed { box-shadow: 0 -10px 30px rgba(29,35,28,0.22); }
+
+    /* Grabber doubles as the old panelToggleBtn: JS writes "Hide"/"Show" into
+       it, so the text is size-0 and the visible bar is a pseudo-element. */
+    .dockGrabber {
+      display: block;
+      width: 100%;
+      flex: none;
+      border: none; background: none;
+      padding: 4px 0 10px; margin: 0;
+      cursor: pointer;
+      font-size: 0; color: transparent;
+    }
+    .dockGrabber::after {
+      content: "";
+      display: block;
+      width: 42px; height: 5px; border-radius: 3px;
+      background: rgba(29,35,28,0.16);
+      margin: 0 auto;
+    }
+    .dockGrabber:hover { background: none; }
+    .dockGrabber:focus-visible { outline: 2px solid var(--swat-green); outline-offset: 2px; }
+
+    .dockBody {
+      overflow: hidden;
+      max-height: 500px;
+      opacity: 1;
+      transition: max-height 220ms ease, opacity 220ms ease;
+    }
+    .controls.is-collapsed .dockBody { max-height: 0; opacity: 0; }
+
+    .dockHeader {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 12px;
+    }
+    .dockLockup { display: flex; align-items: center; gap: 9px; }
+    .dockMark {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 8px;
+      background: var(--swat-green); color: #fff;
+      font-size: 13px; font-weight: 900;
+    }
+    .dockKicker {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: rgba(29,35,28,0.5);
+    }
+    .dockHeader .dockKicker { font-size: 10px; letter-spacing: 0.05em; color: rgba(29,35,28,0.45); line-height: 1; }
+    .dockCustomer { font-size: 14px; font-weight: 800; line-height: 1.2; }
+    .dockLauncher {
+      flex: none;
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 32px; padding: 0 12px; border-radius: 999px;
+      border: 1.5px solid rgba(29,35,28,0.14);
+      background: none; cursor: pointer;
+      font: 700 12px "Roboto", Arial, sans-serif; color: rgba(29,35,28,0.7);
+    }
+    .dockLauncher:hover { background: rgba(29,35,28,0.05); }
+
+    .dockHero { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .controls:not(.is-collapsed) .dockHero {
+      border-top: 1px solid rgba(29,35,28,0.09);
+      padding-top: 12px;
+    }
+    .dockHeroText { min-width: 0; }
+    .dockBlock {
+      font-size: 24px; font-weight: 900; letter-spacing: -0.02em;
+      line-height: 1.05; margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .dockVariety {
+      font-size: 14px; font-weight: 500; color: rgba(29,35,28,0.62);
+      margin-top: 1px; min-height: 18px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
 
-    .controlsToggle {
-      position:absolute;
-      top:10px;
-      right:10px;
-      min-width: 56px;
-      padding: 8px 12px;
-      font-weight: 700;
-      z-index: 1;
+    /* Zone pill: setZonePill() writes textContent + inline background/color. */
+    .zonePill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 14px; border-radius: 999px;
+      background: #eee; color: #111;
+      font-size: 13px; font-weight: 800; letter-spacing: 0.02em;
+      white-space: nowrap; flex: none;
+      box-shadow: 0 3px 10px rgba(29,35,28,0.22);
+    }
+    .zonePill::before {
+      content: ""; width: 9px; height: 9px; border-radius: 50%;
+      background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
+      flex: none;
     }
 
-    .controls > strong:first-of-type {
-      display:block;
-      padding-right: 72px;
-      line-height: 1.2;
+    .dockGpsRow { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+    .dockGpsStart {
+      flex: 1; height: 48px; border: none; border-radius: 14px;
+      background: var(--swat-green); color: #fff;
+      font: 800 15px "Roboto", Arial, sans-serif;
+      cursor: pointer;
+    }
+    .dockGpsStart:hover { background: #34763d; }
+    .dockGpsChip {
+      flex: 1; display: none; align-items: center; gap: 9px;
+      height: 48px; padding: 0 14px; border-radius: 14px;
+      background: #E9F3EA; border: 1.5px solid rgba(64,145,76,0.28);
+      font-size: 14px; font-weight: 800;
+    }
+    .dockGpsDot {
+      width: 11px; height: 11px; border-radius: 50%;
+      background: var(--swat-green);
+      box-shadow: 0 0 0 3px rgba(64,145,76,0.22);
+      flex: none;
+    }
+    .dockAcc { margin-left: auto; font-size: 13px; font-weight: 600; color: rgba(29,35,28,0.55); }
+    .dockGpsStop {
+      display: none; flex: none; height: 48px; padding: 0 16px;
+      border: 1.5px solid rgba(29,35,28,0.16); border-radius: 14px;
+      background: #fff; color: var(--swat-ink);
+      font: 800 14px "Roboto", Arial, sans-serif; cursor: pointer;
+    }
+    .controls.gps-on .dockGpsStart { display: none; }
+    .controls.gps-on .dockGpsChip { display: flex; }
+    .controls.gps-on .dockGpsStop { display: block; }
+
+    .dockJump { position: relative; margin-top: 10px; }
+    .dockJump select {
+      width: 100%; height: 46px; padding: 0 38px 0 15px;
+      border: 1.5px solid rgba(29,35,28,0.14); border-radius: 13px;
+      background: #fff; color: rgba(29,35,28,0.85);
+      font: 600 14px "Roboto", Arial, sans-serif;
+      appearance: none; -webkit-appearance: none;
+    }
+    .dockJump::after {
+      content: ""; position: absolute; right: 15px; top: 50%; margin-top: -3px;
+      width: 0; height: 0;
+      border-top: 6px solid rgba(29,35,28,0.4);
+      border-left: 5px solid transparent; border-right: 5px solid transparent;
+      pointer-events: none;
     }
 
-    .controlsStatusMini {
-      display:none;
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #eee;
+    .dockZonesHead { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+    .dockZonesLabel {
+      font-size: 12px; font-weight: 800; letter-spacing: 0.04em;
+      text-transform: uppercase; color: rgba(29,35,28,0.5);
     }
-
-
-    .controls.is-collapsed {
-      min-width: 0;
-      max-width: min(92vw, 360px);
+    .dockFollow { display: inline-flex; align-items: center; gap: 8px; }
+    .dockFollowText { font-size: 12px; font-weight: 700; color: rgba(29,35,28,0.55); }
+    .dockFollowSeg {
+      display: inline-flex; flex: none;
+      background: rgba(29,35,28,0.09); border-radius: 9px; padding: 3px;
+      border: none; cursor: pointer;
     }
-
-    .controls.is-collapsed .row,
-    .controls.is-collapsed hr,
-    .controls.is-collapsed .btnRow,
-    .controls.is-collapsed > strong:not(:first-of-type) {
-      display:none;
+    .dockFollowSeg .seg {
+      padding: 4px 11px; border-radius: 7px;
+      font-size: 12px; font-weight: 700; color: rgba(29,35,28,0.5);
     }
+    .controls:not(.follow-off) .segOn { background: var(--swat-green); color: #fff; font-weight: 800; }
+    .controls.follow-off .segOff { background: #1D231C; color: #fff; font-weight: 800; }
 
-    .controls.is-collapsed .controlsStatusMini {
-      display:block;
+    /* Zone filters: real checkboxes (zoneEnabled() reads .checked); the input
+       invisibly covers the pill so a tap toggles it natively. */
+    .dockZoneFilters { display: flex; gap: 7px; margin-top: 9px; }
+    .zf { flex: 1; position: relative; display: block; cursor: pointer; }
+    .zf input {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; margin: 0;
+      opacity: 0; cursor: pointer;
     }
+    .zfFace {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      height: 40px; border-radius: 11px;
+      border: 1.5px solid rgba(29,35,28,0.14);
+      background: #fff; color: rgba(29,35,28,0.55);
+      font-size: 12px; font-weight: 700;
+      pointer-events: none;
+    }
+    .zfDot { width: 9px; height: 9px; border-radius: 50%; background: rgba(29,35,28,0.25); }
+    .zf-all input:checked ~ .zfFace { border-color: #1D231C; background: #1D231C; color: #fff; font-weight: 800; }
+    .zf-red input:checked ~ .zfFace { border-color: #E1352B; color: #E1352B; background: rgba(225,53,43,0.08); font-weight: 800; }
+    .zf-red input:checked ~ .zfFace .zfDot { background: #E1352B; }
+    .zf-org input:checked ~ .zfFace { border-color: #E68A00; color: #B86e00; background: rgba(245,158,11,0.12); font-weight: 800; }
+    .zf-org input:checked ~ .zfFace .zfDot { background: #F59E0B; }
+    .zf-grn input:checked ~ .zfFace { border-color: #2F9E44; color: #2F9E44; background: rgba(47,158,68,0.1); font-weight: 800; }
+    .zf-grn input:checked ~ .zfFace .zfDot { background: #2F9E44; }
+    .zf input:focus-visible ~ .zfFace { outline: 2px solid var(--swat-green); outline-offset: 2px; }
+
+    .dockStatusLine { margin-top: 12px; font-size: 11px; color: rgba(29,35,28,0.45); }
+    .dockHiddenMirror { display: none; }
 
 
     .row { margin-top: 8px; }
@@ -101,9 +247,6 @@
       font-weight: 700;
       color: #111;
     }
-
-    .checkRow { display:flex; gap:10px; flex-wrap:wrap; }
-    .checkRow label { font-size: 12px; display:flex; align-items:center; gap:6px; }
 
     hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
 
@@ -307,7 +450,7 @@
     #infoCard {
       position: fixed;
       left: 50%;
-      bottom: 18px;
+      bottom: calc(132px + env(safe-area-inset-bottom)); /* clears the collapsed dock */
       transform: translateX(-50%);
       width: min(92vw, 420px);
       background: rgba(255,255,255,0.97);
@@ -448,56 +591,70 @@
     </div>
   </div>
 
-  <!-- Map UI -->
+  <!-- Map UI — Field Dock bottom sheet (status bar redesign, option 1A) -->
   <div class="controls">
-    <button id="panelToggleBtn" type="button" class="controlsToggle" aria-expanded="true" onclick="toggleControlsPanel()">Hide</button>
-    <strong>SwagriTech Vineyard Maps</strong>
-    <div class="controlsStatusMini small">
-      Customer: <span id="customerLabelCollapsed" class="mono">â€”</span><br>
-      Block: <span id="blockLabelCollapsed" class="mono">â€”</span><br>
-      Zone: <span id="zoneLabelCollapsed" class="pill">â€”</span>
-    </div>
+    <button id="panelToggleBtn" type="button" class="dockGrabber" aria-expanded="true" onclick="toggleControlsPanel()" aria-label="Show or hide controls">Hide</button>
 
-    <div class="row small">
-      Customer: <span id="customerLabel" class="mono">—</span><br>
-      Block: <span id="blockLabel" class="mono">—</span><br>
-      Status: <span id="statusLabel" class="mono">Loading…</span>
-    </div>
-
-    <div class="row">
-      <button type="button" class="actionBtn ghost" onclick="returnToLauncher()">Back to launcher</button>
-    </div>
-
-    <div class="row">
-      <label class="small"><strong>Jump to block</strong></label>
-      <select id="blockSelect"></select>
-    </div>
-
-    <div class="row">
-      <strong>Zones</strong>
-      <div class="checkRow">
-        <label><input type="checkbox" id="zAll"> All zones</label>
-      </div>
-      <div class="checkRow">
-        <label><input type="checkbox" id="z1" checked> Red</label>
-        <label><input type="checkbox" id="z2" checked> Orange</label>
-        <label><input type="checkbox" id="z3" checked> Green</label>
+    <div class="dockBody">
+      <div class="dockHeader">
+        <div class="dockLockup">
+          <span class="dockMark">S</span>
+          <div>
+            <div class="dockKicker">Customer</div>
+            <div class="dockCustomer" id="customerLabel">—</div>
+          </div>
+        </div>
+        <button type="button" class="dockLauncher" onclick="returnToLauncher()">← Launcher</button>
       </div>
     </div>
 
-    <hr>
-
-    <strong>GPS Walking</strong>
-    <div class="btnRow row">
-      <button onclick="startGPS()">Start</button>
-      <button onclick="stopGPS()">Stop</button>
-      <button onclick="toggleFollow()">Follow: <span id="followLabel" class="mono">ON</span></button>
+    <div class="dockHero">
+      <div class="dockHeroText">
+        <div class="dockKicker">You're in</div>
+        <div class="dockBlock" id="blockLabel">—</div>
+        <div class="dockVariety" id="heroVariety"></div>
+      </div>
+      <span id="zoneLabel" class="zonePill">—</span>
     </div>
 
-    <div class="row small">
-      GPS: <span id="gpsLabel" class="mono">OFF</span>
-      &nbsp; Acc: <span id="accLabel" class="mono">—</span><br>
-      You are in: <span id="zoneLabel" class="pill">—</span>
+    <div class="dockBody">
+      <div class="dockGpsRow">
+        <button type="button" class="dockGpsStart" onclick="startGPS()">Start GPS Walking</button>
+        <div class="dockGpsChip"><span class="dockGpsDot"></span><span>GPS on</span><span id="accLabel" class="dockAcc">—</span></div>
+        <button type="button" class="dockGpsStop" onclick="stopGPS()">Stop</button>
+      </div>
+
+      <div class="dockJump">
+        <select id="blockSelect" aria-label="Jump to block"></select>
+      </div>
+
+      <div class="dockZonesHead">
+        <span class="dockZonesLabel">Zones</span>
+        <span class="dockFollow">
+          <span class="dockFollowText">Follow</span>
+          <button type="button" class="dockFollowSeg" onclick="toggleFollow()" aria-label="Toggle follow mode">
+            <span class="seg segOn">On</span><span class="seg segOff">Off</span>
+          </button>
+        </span>
+      </div>
+
+      <div class="dockZoneFilters">
+        <label class="zf zf-all"><input type="checkbox" id="zAll"><span class="zfFace">All</span></label>
+        <label class="zf zf-red"><input type="checkbox" id="z1" checked><span class="zfFace"><span class="zfDot"></span>Red</span></label>
+        <label class="zf zf-org"><input type="checkbox" id="z2" checked><span class="zfFace"><span class="zfDot"></span>Org</span></label>
+        <label class="zf zf-grn"><input type="checkbox" id="z3" checked><span class="zfFace"><span class="zfDot"></span>Grn</span></label>
+      </div>
+
+      <div class="dockStatusLine">Status: <span id="statusLabel" class="mono">Loading…</span></div>
+
+      <!-- JS contract mirrors: syncCollapsedSummary()/GPS labels write here -->
+      <div class="dockHiddenMirror" aria-hidden="true">
+        <span id="customerLabelCollapsed"></span>
+        <span id="blockLabelCollapsed"></span>
+        <span id="zoneLabelCollapsed"></span>
+        <span id="gpsLabel">OFF</span>
+        <span id="followLabel">ON</span>
+      </div>
     </div>
   </div>
 
@@ -518,6 +675,8 @@
     // Performance config
     // ---------------------------
     const GPS_PROCESS_THROTTLE_MS = 300;
+    // Keep fitted content clear of the bottom dock (Field Dock redesign).
+    const FIT_PAD = { top: 24, right: 24, bottom: 150, left: 24 };
     const CONTROLS_COLLAPSED_KEY = "vineyardMapsControlsCollapsed";
     const LAST_CONTEXT_KEY = "vineyardMapsLastContext";
     const LABEL_MIN_ZOOM = 15;
@@ -675,7 +834,9 @@
       $("landing").style.display = "none";
       $("map").style.display = "block";
       document.querySelector(".controls").style.display = "block";
-      setControlsCollapsed(localStorage.getItem(CONTROLS_COLLAPSED_KEY) === "true");
+      // Field Dock: collapsed is the default field state; expanded only if the
+      // user last left it open.
+      setControlsCollapsed(localStorage.getItem(CONTROLS_COLLAPSED_KEY) !== "false");
     }
 
     // Optional upgrade: "Find my vineyard"
@@ -818,21 +979,23 @@
       return `Zone ${z}`;
     }
 
+    // Pill colors follow the Field Dock design tokens; on-map polygon colors
+    // (zoneToColor) intentionally stay the original saturated set.
     function setZonePill(zoneNum) {
       const pill = $("zoneLabel");
 
       if (zoneNum === 1) {
         pill.textContent = "Red zone";
-        pill.style.background = "#ff0000";
+        pill.style.background = "#E1352B";
         pill.style.color = "#ffffff";
       } else if (zoneNum === 2) {
         pill.textContent = "Orange zone";
-        pill.style.background = "#ffa500";
+        pill.style.background = "#F59E0B";
         pill.style.color = "#111111";
       } else if (zoneNum === 3) {
         pill.textContent = "Green zone";
-        pill.style.background = "#00ff00";
-        pill.style.color = "#111111";
+        pill.style.background = "#2F9E44";
+        pill.style.color = "#ffffff";
       } else if (zoneNum == null) {
         pill.textContent = "Outside zones";
         pill.style.background = "#eee";
@@ -1198,12 +1361,12 @@
       if (!ng) return;
       const b = new google.maps.LatLngBounds();
       extendBoundsWithGeom(b, ng.geom);
-      if (!b.isEmpty()) map.fitBounds(b);
+      if (!b.isEmpty()) map.fitBounds(b, FIT_PAD);
     }
 
     function fitWholeVineyard() {
       const b = boundsOfGeoms(navGeoms.concat(surveyGeoms.map(s => ({ key: s.surveyId, geom: s.geom }))));
-      if (b) map.fitBounds(b);
+      if (b) map.fitBounds(b, FIT_PAD);
     }
 
     function blockLabelText(target) {
@@ -1480,7 +1643,7 @@
           lastGpsProcessAt = now;
 
           const ll = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-          $("accLabel").textContent = `${Math.round(pos.coords.accuracy)}m`;
+          $("accLabel").textContent = `±${Math.round(pos.coords.accuracy)} m`;
 
           // Blue dot marker
           if (!gpsMarker) {
@@ -1575,6 +1738,46 @@
       // Restyle zones only when needed
       refreshZones();
     }
+
+    // ---------------------------
+    // Field Dock (status bar redesign): purely visual reflectors.
+    // The GPS/follow engines only write #gpsLabel/#followLabel text; observers
+    // mirror that into classes on the sheet so CSS can swap the Start button
+    // for the status chip and flip the Follow segments. #blockLabel arrives as
+    // "Name — Variety" from blockLabelText(); it is split across the hero's
+    // two lines here so the engine code stays untouched.
+    // ---------------------------
+    (function initFieldDock() {
+      const sheet = document.querySelector(".controls");
+      if (!sheet) return;
+      const gpsEl = $("gpsLabel"), followEl = $("followLabel");
+      const blockEl = $("blockLabel"), varietyEl = $("heroVariety");
+      const obsOpts = { childList: true, characterData: true, subtree: true };
+
+      function reflect() {
+        sheet.classList.toggle("gps-on", gpsEl.textContent.trim() === "ON");
+        sheet.classList.toggle("follow-off", followEl.textContent.trim() !== "ON");
+      }
+      new MutationObserver(reflect).observe(gpsEl, obsOpts);
+      new MutationObserver(reflect).observe(followEl, obsOpts);
+      reflect();
+
+      let internalHeroWrite = false;
+      function splitHero() {
+        if (internalHeroWrite) { internalHeroWrite = false; return; }
+        const t = blockEl.textContent;
+        const i = t.indexOf(" — ");
+        if (i > 0) {
+          varietyEl.textContent = t.slice(i + 3);
+          internalHeroWrite = true;
+          blockEl.textContent = t.slice(0, i);
+        } else {
+          varietyEl.textContent = "";
+        }
+      }
+      new MutationObserver(splitHero).observe(blockEl, obsOpts);
+      splitHero();
+    })();
   </script>
 </body>
 </html>
