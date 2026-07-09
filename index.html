@@ -56,6 +56,10 @@
     .dockGrabber:hover { background: none; }
     .dockGrabber:focus-visible { outline: 2px solid var(--swat-green); outline-offset: 2px; }
 
+    /* Drag zones: stop the browser claiming the vertical gesture so the sheet
+       can follow the finger up/down. */
+    .dockGrabber, .dockHeader, .dockHero { touch-action: none; }
+
     .dockBody {
       overflow: hidden;
       max-height: 500px;
@@ -593,7 +597,7 @@
 
   <!-- Map UI — Field Dock bottom sheet (status bar redesign, option 1A) -->
   <div class="controls">
-    <button id="panelToggleBtn" type="button" class="dockGrabber" aria-expanded="true" onclick="toggleControlsPanel()" aria-label="Show or hide controls">Hide</button>
+    <button id="panelToggleBtn" type="button" class="dockGrabber" aria-expanded="true" aria-label="Show or hide controls">Hide</button>
 
     <div class="dockBody">
       <div class="dockHeader">
@@ -1777,6 +1781,66 @@
       }
       new MutationObserver(splitHero).observe(blockEl, obsOpts);
       splitHero();
+    })();
+
+    // ---------------------------
+    // Field Dock drag-to-expand/collapse. Reuses setControlsCollapsed(); a
+    // drag past the threshold in the "wrong" direction for the current state
+    // toggles it. Tap (no meaningful movement) still toggles via the grabber's
+    // click. Works with touch and mouse via Pointer Events.
+    // ---------------------------
+    (function initDockDrag() {
+      const sheet = document.querySelector(".controls");
+      const grabber = $("panelToggleBtn");
+      if (!sheet || !grabber) return;
+
+      const MOVE_EPS = 6;    // px before a press counts as a drag (vs a tap)
+      const TOGGLE_DY = 26;  // px of travel that commits the toggle
+      let startY = null, startCollapsed = false, moved = false, toggled = false, pid = null;
+      let suppressClick = false;
+
+      // Don't start a drag from a real control (buttons, the select, filter
+      // labels) — only from the grabber or the non-interactive hero/header.
+      function fromControl(target) {
+        if (grabber.contains(target)) return false;
+        const c = target.closest("button, select, input, label, a");
+        return !!c;
+      }
+
+      sheet.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        if (fromControl(e.target)) return;
+        startY = e.clientY;
+        startCollapsed = sheet.classList.contains("is-collapsed");
+        moved = false; toggled = false; pid = e.pointerId;
+        try { sheet.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+
+      sheet.addEventListener("pointermove", (e) => {
+        if (startY === null || e.pointerId !== pid) return;
+        const dy = e.clientY - startY;
+        if (Math.abs(dy) > MOVE_EPS) moved = true;
+        if (!toggled) {
+          if (startCollapsed && dy < -TOGGLE_DY) { setControlsCollapsed(false); toggled = true; }
+          else if (!startCollapsed && dy > TOGGLE_DY) { setControlsCollapsed(true); toggled = true; }
+        }
+      });
+
+      function endDrag(e) {
+        if (startY === null || e.pointerId !== pid) return;
+        try { sheet.releasePointerCapture(e.pointerId); } catch (err) {}
+        // A drag that moved should not also trigger the grabber's tap-toggle.
+        if (moved) { suppressClick = true; setTimeout(() => { suppressClick = false; }, 400); }
+        startY = null; pid = null;
+      }
+      sheet.addEventListener("pointerup", endDrag);
+      sheet.addEventListener("pointercancel", endDrag);
+
+      // Tap / keyboard (Enter/Space) toggle — replaces the old inline onclick.
+      grabber.addEventListener("click", () => {
+        if (suppressClick) { suppressClick = false; return; }
+        toggleControlsPanel();
+      });
     })();
   </script>
 </body>
