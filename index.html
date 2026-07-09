@@ -449,33 +449,6 @@
       }
     }
     code { background: #f2f2f2; padding: 2px 6px; border-radius: 8px; }
-
-    /* Info card (v2) — tap a block */
-    #infoCard {
-      position: fixed;
-      left: 50%;
-      bottom: calc(132px + env(safe-area-inset-bottom)); /* clears the collapsed dock */
-      transform: translateX(-50%);
-      width: min(92vw, 420px);
-      background: rgba(255,255,255,0.97);
-      border: 1px solid var(--swat-border);
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.28);
-      padding: 14px 16px;
-      z-index: 20;
-      display: none;
-    }
-    #infoCard .infoCardTitle {
-      font-size: 16px;
-      font-weight: 700;
-      color: #111;
-      line-height: 1.2;
-    }
-    #infoCard .infoCardMeta {
-      margin-top: 6px;
-      color: #444;
-    }
-    #infoCard .btnRow { margin-top: 12px; }
   </style>
 
   <script
@@ -663,16 +636,6 @@
   </div>
 
   <div id="map"></div>
-
-  <!-- Info card (tap a block) -->
-  <div id="infoCard">
-    <div class="infoCardTitle" id="cardTitle">—</div>
-    <div class="infoCardMeta small" id="cardMeta">—</div>
-    <div class="btnRow">
-      <button type="button" class="actionBtn primary" id="cardZoomBtn">Zoom to block</button>
-      <button type="button" class="actionBtn ghost" id="cardCloseBtn">Close</button>
-    </div>
-  </div>
 
   <script>
     // ---------------------------
@@ -946,7 +909,6 @@
 
     let activeSurveyIds = new Set();
     let allZonesChecked = false;
-    let cardTarget = null;
 
     // GPS
     let gpsWatch = null;
@@ -1289,7 +1251,7 @@
         const key = sel.value;
         if (!key) return;
         const t = targetByKey[key];
-        if (t) applySelection(t, { openCardFlag: true, fit: true, updateUrl: true });
+        if (t) applySelection(t, { fit: true, updateUrl: true });
       });
     }
 
@@ -1308,7 +1270,7 @@
         });
         m.__name = t.displayName;
         m.__variety = t.variety || "";
-        m.addListener("click", () => applySelection(t, { openCardFlag: true, updateUrl: true }));
+        m.addListener("click", () => applySelection(t, { updateUrl: true }));
         labelMarkers.push(m);
       });
     }
@@ -1377,36 +1339,19 @@
       return target.variety ? `${target.displayName} — ${target.variety}` : target.displayName;
     }
 
-    function showCard(target) {
-      cardTarget = target;
-      $("cardTitle").textContent = blockLabelText(target);
-      const parts = [];
-      if (target.areaHa != null) parts.push(`${Number(target.areaHa).toFixed(1)} ha`);
-      const tokens = (target.surveyIds || []).map(id => (surveyById[String(id)] || {}).token).filter(Boolean);
-      parts.push(tokens.length ? `NDVI coverage: ${tokens.join(", ")}` : "No NDVI survey yet");
-      $("cardMeta").textContent = parts.join(" · ");
-      $("infoCard").style.display = "block";
-    }
-
-    function hideCard() {
-      $("infoCard").style.display = "none";
-      cardTarget = null;
-    }
-
     function syncDropdown(key) {
       const sel = $("blockSelect");
       if (sel && sel.value !== String(key)) sel.value = String(key);
     }
 
-    // Last event wins. isGps selections never open a card, change the URL, or save context.
+    // Last event wins. isGps selections never change the URL or save context.
     function applySelection(target, opts = {}) {
-      const { openCardFlag = false, fit = false, updateUrl = false, isGps = false } = opts;
+      const { fit = false, updateUrl = false, isGps = false } = opts;
       if (!target) return;
       activeSurveyIds = new Set((target.surveyIds || []).map(String));
       refreshZones();
       refreshSurveyOutlines();
       if (fit) fitToTarget(target);
-      if (openCardFlag) showCard(target);
       if (updateUrl) setQueryParam("block", target.key);
       if (!isGps) {
         syncDropdown(target.key);
@@ -1425,7 +1370,7 @@
     function onMapTap(latLng) {
       const t = resolveTargetAt(latLng.lng(), latLng.lat());
       if (!t) return;
-      applySelection(t, { openCardFlag: true, updateUrl: true });
+      applySelection(t, { updateUrl: true });
     }
 
     // ---------------------------
@@ -1599,8 +1544,6 @@
       map.addListener("zoom_changed", updateLabelVisibility);
 
       // Card buttons.
-      $("cardZoomBtn").addEventListener("click", () => { if (cardTarget) fitToTarget(cardTarget); });
-      $("cardCloseBtn").addEventListener("click", hideCard);
 
       // Fetch all geometry in parallel, inject identity props, build hit-test caches + links.
       await loadAllData();
