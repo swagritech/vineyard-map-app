@@ -1,0 +1,222 @@
+{
+    "schemaVersion":  2,
+    "customer":  "IslandBrook",
+    "updatedUtc":  "2026-07-10T09:02:56Z",
+    "boundaries":  "IslandBrook_Boundaries.geojson",
+    "blocks":  [
+                   {
+                       "key":  "Block A - Semillon",
+                       "featureName":  "Block A - Semillon - 0.383 ha",
+                       "displayName":  "Block A - Semillon",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.383,
+                       "variety":  "Semillon",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block B - Semillon",
+                       "featureName":  "Block B - Semillon - 0.996 ha",
+                       "displayName":  "Block B - Semillon",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.996,
+                       "variety":  "Semillon",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block C - Semillon",
+                       "featureName":  "Block C - Semillon - 0.755 ha",
+                       "displayName":  "Block C - Semillon",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.755,
+                       "variety":  "Semillon",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block D - Semillon",
+                       "featureName":  "Block D - Semillon - 0.923 ha",
+                       "displayName":  "Block D - Semillon",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.923,
+                       "variety":  "Semillon",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block E - CabSauv",
+                       "featureName":  "Block E - CabSauv - 0.142 ha",
+                       "displayName":  "Block E - CabSauv",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.142,
+                       "variety":  "Cabernet",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block F - CabSauv",
+                       "featureName":  "Block F - CabSauv - 0.156 ha",
+                       "displayName":  "Block F - CabSauv",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.156,
+                       "variety":  "Cabernet",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block G - CabSauv",
+                       "featureName":  "Block G - CabSauv - 0.636 ha",
+                       "displayName":  "Block G - CabSauv",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.636,
+                       "variety":  "Cabernet",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block H - CabSauv",
+                       "featureName":  "Block H - CabSauv - 0.254 ha",
+                       "displayName":  "Block H - CabSauv",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.254,
+                       "variety":  "Cabernet",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block H - Chardonnay",
+                       "featureName":  "Block H - Chardonnay - 0.405 ha",
+                       "displayName":  "Block H - Chardonnay",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.405,
+                       "variety":  "Chardonnay",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block I - Chardonnay",
+                       "featureName":  "Block I - Chardonnay - 0.296 ha",
+                       "displayName":  "Block I - Chardonnay",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.296,
+                       "variety":  "Chardonnay",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block I - Merlot",
+                       "featureName":  "Block I - Merlot - 0.516 ha",
+                       "displayName":  "Block I - Merlot",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  0.516,
+                       "variety":  "Merlot",
+                       "notes":  ""
+                   },
+                   {
+                       "key":  "Block I - Verdelho - 0.560",
+                       "featureName":  "Block I - Verdelho - 0.560",
+                       "displayName":  "Block I - Verdelho - 0.560",
+                       "numbers":  [
+
+                                   ],
+                       "areaHa":  null,
+                       "variety":  "Verdelho",
+                       "notes":  ""
+                   }
+               ],
+    "surveys":  [
+                    {
+                        "id":  "1",
+                        "token":  "BLOCK A",
+                        "displayName":  "BLOCK A",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/1/block1boundary.geojson",
+                        "rx":  "blocks/1/block1rx.geojson"
+                    },
+                    {
+                        "id":  "2",
+                        "token":  "BLOCK B",
+                        "displayName":  "BLOCK B",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/2/block2boundary.geojson",
+                        "rx":  "blocks/2/block2rx.geojson"
+                    },
+                    {
+                        "id":  "3",
+                        "token":  "BLOCK C",
+                        "displayName":  "BLOCK C",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/3/block3boundary.geojson",
+                        "rx":  "blocks/3/block3rx.geojson"
+                    },
+                    {
+                        "id":  "4",
+                        "token":  "BLOCK D",
+                        "displayName":  "BLOCK D",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/4/block4boundary.geojson",
+                        "rx":  "blocks/4/block4rx.geojson"
+                    },
+                    {
+                        "id":  "5",
+                        "token":  "BLOCK E",
+                        "displayName":  "BLOCK E",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/5/block5boundary.geojson",
+                        "rx":  "blocks/5/block5rx.geojson"
+                    },
+                    {
+                        "id":  "6",
+                        "token":  "BLOCK F&G",
+                        "displayName":  "BLOCK F&G",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/6/block6boundary.geojson",
+                        "rx":  "blocks/6/block6rx.geojson"
+                    },
+                    {
+                        "id":  "7",
+                        "token":  "BLOCK H",
+                        "displayName":  "BLOCK H",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/7/block7boundary.geojson",
+                        "rx":  "blocks/7/block7rx.geojson"
+                    },
+                    {
+                        "id":  "8",
+                        "token":  "BLOCK I",
+                        "displayName":  "BLOCK I",
+                        "numbers":  [
+
+                                    ],
+                        "boundary":  "blocks/8/block8boundary.geojson",
+                        "rx":  "blocks/8/block8rx.geojson"
+                    }
+                ]
+}

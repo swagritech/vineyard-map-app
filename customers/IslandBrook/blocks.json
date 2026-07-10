@@ -1,0 +1,46 @@
+{
+    "customer":  "IslandBrook",
+    "defaultBlock":  "1",
+    "blocks":  [
+                   {
+                       "id":  "1",
+                       "name":  "Block A",
+                       "sourceToken":  "Block A"
+                   },
+                   {
+                       "id":  "2",
+                       "name":  "Block B",
+                       "sourceToken":  "Block B"
+                   },
+                   {
+                       "id":  "3",
+                       "name":  "Block C",
+                       "sourceToken":  "Block C"
+                   },
+                   {
+                       "id":  "4",
+                       "name":  "Block D",
+                       "sourceToken":  "Block D"
+                   },
+                   {
+                       "id":  "5",
+                       "name":  "Block E",
+                       "sourceToken":  "Block E"
+                   },
+                   {
+                       "id":  "6",
+                       "name":  "Block F&G",
+                       "sourceToken":  "Block F&G"
+                   },
+                   {
+                       "id":  "7",
+                       "name":  "Block H",
+                       "sourceToken":  "Block H"
+                   },
+                   {
+                       "id":  "8",
+                       "name":  "Block I",
+                       "sourceToken":  "Block I"
+                   }
+               ]
+}

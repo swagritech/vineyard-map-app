@@ -1,0 +1,50 @@
+{
+    "Block A - Semillon":  {
+                               "variety":  "Semillon",
+                               "notes":  ""
+                           },
+    "Block B - Semillon":  {
+                               "variety":  "Semillon",
+                               "notes":  ""
+                           },
+    "Block C - Semillon":  {
+                               "variety":  "Semillon",
+                               "notes":  ""
+                           },
+    "Block D - Semillon":  {
+                               "variety":  "Semillon",
+                               "notes":  ""
+                           },
+    "Block E - CabSauv":  {
+                              "variety":  "Cabernet",
+                              "notes":  ""
+                          },
+    "Block F - CabSauv":  {
+                              "variety":  "Cabernet",
+                              "notes":  ""
+                          },
+    "Block G - CabSauv":  {
+                              "variety":  "Cabernet",
+                              "notes":  ""
+                          },
+    "Block H - CabSauv":  {
+                              "variety":  "Cabernet",
+                              "notes":  ""
+                          },
+    "Block H - Chardonnay":  {
+                                 "variety":  "Chardonnay",
+                                 "notes":  ""
+                             },
+    "Block I - Chardonnay":  {
+                                 "variety":  "Chardonnay",
+                                 "notes":  ""
+                             },
+    "Block I - Merlot":  {
+                             "variety":  "Merlot",
+                             "notes":  ""
+                         },
+    "Block I - Verdelho - 0.560":  {
+                                       "variety":  "Verdelho",
+                                       "notes":  ""
+                                   }
+}

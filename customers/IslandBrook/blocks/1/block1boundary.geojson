@@ -1,0 +1,7 @@
+{
+"type": "FeatureCollection",
+"name": "NDVI - Block A 3 zones_Boundary",
+"features": [
+{ "type": "Feature", "properties": { "name": "Island Brook 080125" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 115.1527172, -33.7538386 ], [ 115.1536416, -33.7539528 ], [ 115.1537181, -33.7535833 ], [ 115.1526805, -33.753453 ], [ 115.1527172, -33.7538386 ] ] ] } }
+]
+}
